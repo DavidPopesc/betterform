@@ -4,7 +4,9 @@ import crypto from "crypto"
 import { redirect } from "next/navigation"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import CreateFormButton from '@/components/create-form-button'
 import Image from "next/image"
+import FormCard from '@/components/form-card'
 function sha256Hex(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex")
 }
@@ -27,14 +29,8 @@ export default async function DashboardPage() {
     { title: "RSVP", color: "bg-rose-100" },
   ]
 
-  const recent = [
-    { title: "Untitled form", meta: "Opened 11:56 AM" },
-    { title: "Untitled form 2", meta: "Opened 11:49 AM" },
-    { title: "Chess Tournament", meta: "Apr 20, 2023" },
-    { title: "TSA Official Point Log", meta: "Oct 25, 2022" },
-    { title: "Survey", meta: "Mar 3, 2024" },
-    { title: "Event RSVP", meta: "Jan 7, 2024" },
-  ]
+  // load the user's forms from the database
+  const forms = await prisma.form.findMany({ where: { accountId: user.id }, orderBy: { updatedAt: 'desc' }, take: 24 })
 
   return (
     <div className="min-h-svh p-8">
@@ -66,7 +62,7 @@ export default async function DashboardPage() {
                 </div>
               </div>
               <div className="w-full flex justify-end mt-3">
-                <Button size="sm">Start</Button>
+                <CreateFormButton />
               </div>
             </Card>
 
@@ -88,14 +84,8 @@ export default async function DashboardPage() {
           </div>
 
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {recent.map((r) => (
-              <Card key={r.title} className="p-0 overflow-hidden">
-                <div className="h-40 w-full bg-linear-to-br from-white to-slate-100 overflow-hidden" />
-                <div className="p-4">
-                  <div className="font-semibold">{r.title}</div>
-                  <div className="text-sm text-muted-foreground mt-1">{r.meta}</div>
-                </div>
-              </Card>
+            {forms.map((f) => (
+              <FormCard key={f.id} form={f} />
             ))}
           </div>
         </section>
