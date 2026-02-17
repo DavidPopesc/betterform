@@ -5,10 +5,115 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../lib/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
+
+// Application models for BetterForm: accounts, forms, fields, responses
+// Notes:
+// - Store form schemas in `Json` for flexible field sets (Values.json).
+// - Sensitive values (TOTP secrets, per-field values) should be encrypted
+//   at the application layer before writing to the DB.
+
+enum FieldType {
+  short_text
+  paragraph
+  multiple_choice
+  checkboxes
+  dropdown
+  file_upload
+  number
+  email
+  linear_scale
+  rating
+  date
+  time
+  multiple_choice_grid
+  checkbox_grid
+}
+
+model Account {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  // TOTP / 2FA
+  totpEnabled   Boolean  @default(false)
+  totpSecret    String?  // encrypted ciphertext (store encrypted at app layer)
+  totpVerifiedAt DateTime?
+  recoveryCodes Json?    // array of hashed recovery codes
+
+  // relations
+  forms         Form[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Form {
+  id        String      @id @default(uuid())
+  accountId String
+  account   Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name      String?
+
+  // full schema for the form (Values.json-like structure)
+  schema    Json
+
+  // optional normalized field rows for queries / admin tooling
+  fields    FormField[]
+  responses Response[]
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model FormField {
+  id        String    @id @default(uuid())
+  formId    String
+  form      Form      @relation(fields: [formId], references: [id], onDelete: Cascade)
+  name      String
+  label     String
+  type      FieldType
+  required  Boolean   @default(false)
+  order     Int       @default(0)
+  validation Json?    // e.g. { min:0, max:120, pattern: "..." }
+  settings  Json?     // UI / upload settings, options etc.
+  encrypt   Boolean   @default(false) // whether this field should be encrypted
+}
+
+model Response {
+  id             String      @id @default(uuid())
+  formId         String
+  form           Form        @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  // The entire submission payload (keyed by field names). Encrypt per-field values
+  // at the application layer when necessary.
+  response       Json
+
+  createdAt      DateTime    @default(now())
+  respondentIp   String?     // store as string; consider hashing before persist
+  respondentHash String?     // app-level hashed identifier (HMAC)
+  respondentEmail String?    // for quick lookup/indexing
+
+  processed      Boolean     @default(false)
+  attachments    Attachment[]
+
+  @@index([formId, createdAt])
+  @@index([respondentEmail])
+}
+
+model Attachment {
+  id         String   @id @default(uuid())
+  responseId String
+  response   Response @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  filename   String
+  mimeType   String?
+  size       Int?
+  url        String   // e.g., S3 URL or storage key
+  createdAt  DateTime @default(now())
+}
+
