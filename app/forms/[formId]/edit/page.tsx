@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation'
 import Editor from '@/components/form-editor/Editor'
 import { getSessionUser } from '@/lib/auth-server'
+import Image from "next/image"
+import Link from 'next/link'
 
 export default async function Page({ params }: { params: { formId?: string } | Promise<{ formId?: string }> }) {
   const user = await getSessionUser()
@@ -18,7 +20,10 @@ export default async function Page({ params }: { params: { formId?: string } | P
 
   return (
     <div className="min-h-svh p-8">
-      <h1 className="text-2xl font-semibold mb-4">Form Editor</h1>
+      <Link href="/dashboard" className="flex items-center gap-4">
+        <Image src="/betterformlogo.png" width={40} height={40} alt="Better Form logo" className="mb-4" />
+        <h1 className="text-3xl font-semibold mb-4">Better Form</h1>
+      </Link>
       {/* Editor is a client component that manages local state */}
       <Editor formId={formId} initialSchema={initialSchema} />
     </div>
