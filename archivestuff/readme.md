@@ -2,6 +2,7 @@ Better Forms
 Should:
 - Use Shadcn ui
 - Have a form builder that has virtually every field google forms have
+        - https://ui.shadcn.com/create?item=field-example
     - Short answer
     - Paragraph
     - Multiple choice
