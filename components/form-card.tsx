@@ -1,12 +1,14 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { Card } from '@/components/ui/card'
+import Link from 'next/link'
 
 type FormRecord = {
   id: string
   name?: string | null
   schema?: any
-  updatedAt?: string
+  createdAt?: string | Date
+  updatedAt?: string | Date
 }
 
 export default function FormCard({ form }: { form: FormRecord }) {
@@ -15,7 +17,8 @@ export default function FormCard({ form }: { form: FormRecord }) {
   const seed = encodeURIComponent(title + form.id)
 
   return (
-    <Card className="p-0 overflow-hidden">
+    <Card className="p-0 overflow-hidden" >
+        <Link href={`/forms/${form.id}/edit`} className="block">
       <div className="h-40 w-full rounded-t-md overflow-hidden bg-slate-100">
         <Image
           src={`https://picsum.photos/seed/${seed}/800/480`}
@@ -29,6 +32,7 @@ export default function FormCard({ form }: { form: FormRecord }) {
         <div className="font-semibold">{title}</div>
         {form.updatedAt && <div className="text-sm text-muted-foreground mt-1">{new Date(form.updatedAt).toLocaleString()}</div>}
       </div>
+      </Link>
     </Card>
   )
 }

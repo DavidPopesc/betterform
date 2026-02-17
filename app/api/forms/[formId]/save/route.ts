@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import prisma from '@/lib/db'
 import { getSessionUser } from '@/lib/auth-server'
 
 export async function POST(
@@ -15,6 +14,7 @@ export async function POST(
     if (!formId) return NextResponse.json({ error: 'invalid_form_id' }, { status: 400 })
 
     // Verify the form belongs to the user
+    const { default: prisma } = await import('@/lib/db')
     const form = await prisma.form.findUnique({ where: { id: formId } })
     if (!form || form.accountId !== user.id) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })

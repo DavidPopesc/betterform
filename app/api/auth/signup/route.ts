@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import prisma from "@/lib/db"
 import { hashPassword } from "@/lib/auth"
 import { sendVerificationEmail } from "@/lib/email"
 
@@ -8,6 +7,7 @@ export async function POST(req: Request) {
     const { name, email, password } = await req.json()
     if (!name || !email || !password) return NextResponse.json({ error: "Missing fields" }, { status: 400 })
 
+    const { default: prisma } = await import('@/lib/db')
     const existing = await prisma.account.findUnique({ where: { email } })
     if (existing) return NextResponse.json({ error: "Email already in use" }, { status: 409 })
 

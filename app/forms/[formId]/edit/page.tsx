@@ -1,4 +1,3 @@
-import prisma from '@/lib/db'
 import { redirect } from 'next/navigation'
 import Editor from '@/components/form-editor/Editor'
 import { getSessionUser } from '@/lib/auth-server'
@@ -12,6 +11,7 @@ export default async function Page({ params }: { params: { formId?: string } | P
   const formId = resolvedParams?.formId
   if (!formId) return redirect('/dashboard')
 
+  const { default: prisma } = await import('@/lib/db')
   const form = await prisma.form.findUnique({ where: { id: formId } })
 
   const initialSchema = form?.schema ?? { fields: [] }

@@ -1,5 +1,4 @@
 import { cookies } from 'next/headers'
-import prisma from '@/lib/db'
 import crypto from 'crypto'
 
 function sha256Hex(input: string) {
@@ -19,6 +18,7 @@ export async function getSessionUser() {
   }
 
   const tokenHash = sha256Hex(token)
+  const { default: prisma } = await import('@/lib/db')
   const session = await prisma.session.findFirst({
     where: { tokenHash, revoked: false },
     include: { user: true },

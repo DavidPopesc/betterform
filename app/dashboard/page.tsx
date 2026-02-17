@@ -1,4 +1,3 @@
-import prisma from "@/lib/db"
 import { redirect } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,6 +18,7 @@ export default async function DashboardPage() {
   ]
 
   // load the user's forms from the database
+  const { default: prisma } = await import('@/lib/db')
   const forms = await prisma.form.findMany({ where: { accountId: user.id }, orderBy: { updatedAt: 'desc' }, take: 24 })
 
   return (
