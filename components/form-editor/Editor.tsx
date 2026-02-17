@@ -22,6 +22,8 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
   const [fields, setFields] = React.useState<Field[]>(initialSchema.fields ?? [])
   const [selected, setSelected] = React.useState<string | null>(fields[0]?.id ?? null)
   const [isSaving, setIsSaving] = React.useState(false)
+  const [isDirty, setIsDirty] = React.useState(false)
+  const [lastSavedAt, setLastSavedAt] = React.useState<Date | null>(null)
 
   React.useEffect(() => {
     setFields(initialSchema.fields ?? [])
@@ -38,6 +40,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
     }
     setFields((s) => [...s, f])
     setSelected(id)
+    setIsDirty(true)
   }
 
   function deleteField(id: string) {
@@ -45,10 +48,12 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
     if (selected === id) {
       setSelected(fields.length > 1 ? fields[0].id : null)
     }
+    setIsDirty(true)
   }
 
   function updateField(id: string, patch: Partial<Field>) {
     setFields((s) => s.map((f) => (f.id === id ? { ...f, ...patch } : f)))
+    setIsDirty(true)
   }
 
   function moveField(from: number, to: number) {
@@ -57,6 +62,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
     const [removed] = updated.splice(from, 1)
     updated.splice(to, 0, removed)
     setFields(updated)
+    setIsDirty(true)
   }
 
   async function saveForm() {
@@ -68,12 +74,41 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
         body: JSON.stringify({ schema: { fields } }),
       })
       if (!res.ok) throw new Error('save-failed')
+      // mark saved
+      setIsDirty(false)
+      setLastSavedAt(new Date())
     } catch (err) {
       console.error('Save failed:', err)
     } finally {
       setIsSaving(false)
     }
   }
+
+  // Autosave: debounce saves when fields change and there are unsaved edits
+  React.useEffect(() => {
+    if (!isDirty) return
+    const id = setTimeout(() => {
+      void saveForm()
+    }, 1000)
+    return () => clearTimeout(id)
+  }, [fields, isDirty])
+
+  // Try to persist on unload using navigator.sendBeacon as a best-effort
+  React.useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (!isDirty) return
+      try {
+        const url = `/api/forms/${formId}/save`
+        const payload = JSON.stringify({ schema: { fields } })
+        const blob = new Blob([payload], { type: 'application/json' })
+        navigator.sendBeacon(url, blob)
+      } catch (e) {
+        // ignore
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [fields, isDirty, formId])
 
   const selectedField = fields.find((f) => f.id === selected) ?? null
   const selectedIndex = fields.findIndex((f) => f.id === selected)
@@ -83,9 +118,15 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
       {/* Top toolbar */}
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-semibold">Form Editor</h2>
-        <Button onClick={saveForm} disabled={isSaving}>
-          {isSaving ? 'Saving…' : 'Save'}
-        </Button>
+        <div className="text-sm text-muted-foreground">
+          {isSaving
+            ? 'Saving…'
+            : lastSavedAt
+            ? `Saved ${lastSavedAt.toLocaleTimeString()}`
+            : isDirty
+            ? 'Unsaved changes'
+            : 'All changes saved'}
+        </div>
       </div>
 
       <div className="grid grid-cols-12 gap-4">
