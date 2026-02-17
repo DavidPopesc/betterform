@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 
+import { CirclePlus, Import, CaseSensitive, Image, GalleryVertical } from 'lucide-react'
 type Field = {
   id: string
   type: string
@@ -217,51 +218,15 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
         </section>
 
         {/* Right sidebar: Inspector */}
-        <aside className="col-span-3">
-          <Card className="p-4">
-            <div className="font-semibold mb-4">Field properties</div>
-            {selectedField ? (
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-medium block mb-1">Label</label>
-                  <Input
-                    value={selectedField.label}
-                    onChange={(e) => updateField(selectedField.id, { label: e.target.value })}
-                    placeholder="Field label"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium block mb-2 flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={!!selectedField.required}
-                      onChange={(e) => updateField(selectedField.id, { required: e.target.checked })}
-                    />
-                    Required
-                  </label>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground block mb-1">
-                    Type: {selectedField.type}
-                  </label>
-                </div>
-
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => deleteField(selectedField.id)}
-                  className="w-full mt-4"
-                >
-                  Delete field
-                </Button>
-              </div>
-            ) : (
-              <div className="text-sm text-muted-foreground py-8 text-center">
-                Select a field to edit its properties.
-              </div>
-            )}
+        <aside className="col-auto self-start">
+          <Card className="p-2 w-max">
+            <div className="flex flex-col gap-3 items-center">
+              <Button variant="outline" size="icon-sm" className="p-0"> <CirclePlus /> </Button>
+              <Button variant="outline" size="icon-sm" className="p-0"> <Import /> </Button>
+              <Button variant="outline" size="icon-sm" className="p-0"> <CaseSensitive /> </Button>
+              <Button variant="outline" size="icon-sm" className="p-0"> <Image /> </Button>
+              <Button variant="outline" size="icon-sm" className="p-0"> <GalleryVertical /> </Button>
+            </div>
           </Card>
         </aside>
       </div>
