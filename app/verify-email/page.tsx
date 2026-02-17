@@ -1,5 +1,7 @@
 import { verifyEmailToken } from "@/lib/email"
 
+import Link from "next/link"
+
 export default async function VerifyEmailPage({ searchParams }: { searchParams: Promise<{ t?: string; uid?: string }> | { t?: string; uid?: string } }) {
   const params = (await searchParams) as { t?: string; uid?: string }
   const token = params.t
@@ -25,6 +27,7 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
           <>
             <h1 className="text-xl font-semibold">Email verified</h1>
             <p className="mt-2">Thank you — your email address has been verified.</p>
+            <Link href="/login" className="mt-4 inline-block text-sm underline-offset-4 hover:underline"> Sign in</Link>
           </>
         ) : (
           <>

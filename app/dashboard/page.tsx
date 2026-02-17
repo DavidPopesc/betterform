@@ -4,7 +4,7 @@ import crypto from "crypto"
 import { redirect } from "next/navigation"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-
+import Image from "next/image"
 function sha256Hex(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex")
 }
@@ -29,7 +29,7 @@ export default async function DashboardPage() {
 
   const recent = [
     { title: "Untitled form", meta: "Opened 11:56 AM" },
-    { title: "Untitled form", meta: "Opened 11:49 AM" },
+    { title: "Untitled form 2", meta: "Opened 11:49 AM" },
     { title: "Chess Tournament", meta: "Apr 20, 2023" },
     { title: "TSA Official Point Log", meta: "Oct 25, 2022" },
     { title: "Survey", meta: "Mar 3, 2024" },
@@ -40,7 +40,8 @@ export default async function DashboardPage() {
     <div className="min-h-svh p-8">
       <header className="max-w-6xl mx-auto mb-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="text-3xl font-semibold">Forms</div>
+          <Image src="/betterformlogo.png" width={40} height={40} alt="Better Form logo" />
+          <div className="text-3xl font-semibold">Better Form</div>
           <div className="hidden md:block text-sm text-muted-foreground">Start, edit, and view your forms</div>
         </div>
         <div className="flex items-center gap-3">
@@ -89,7 +90,7 @@ export default async function DashboardPage() {
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {recent.map((r) => (
               <Card key={r.title} className="p-0 overflow-hidden">
-                <div className="h-40 w-full bg-gradient-to-br from-white to-slate-100 overflow-hidden" />
+                <div className="h-40 w-full bg-linear-to-br from-white to-slate-100 overflow-hidden" />
                 <div className="p-4">
                   <div className="font-semibold">{r.title}</div>
                   <div className="text-sm text-muted-foreground mt-1">{r.meta}</div>

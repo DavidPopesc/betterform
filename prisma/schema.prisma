@@ -39,6 +39,7 @@ enum FieldType {
 model Account {
   id            String   @id @default(uuid())
   email         String   @unique
+  name          String
   passwordHash  String
   // TOTP / 2FA
   totpEnabled   Boolean  @default(false)

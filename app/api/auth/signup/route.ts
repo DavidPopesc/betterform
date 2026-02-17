@@ -6,13 +6,13 @@ import { sendVerificationEmail } from "@/lib/email"
 export async function POST(req: Request) {
   try {
     const { name, email, password } = await req.json()
-    if (!email || !password) return NextResponse.json({ error: "Missing fields" }, { status: 400 })
+    if (!name || !email || !password) return NextResponse.json({ error: "Missing fields" }, { status: 400 })
 
     const existing = await prisma.account.findUnique({ where: { email } })
     if (existing) return NextResponse.json({ error: "Email already in use" }, { status: 409 })
 
     const passwordHash = await hashPassword(password)
-    const user = await prisma.account.create({ data: { email, passwordHash } })
+    const user = await prisma.account.create({ data: { email, name, passwordHash } })
 
     // send magic link email (async)
     try {
@@ -24,7 +24,13 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error(err)
+    console.error('Signup error:', err)
+    // safely log stack if present, otherwise stringify
+    if (err instanceof Error) {
+      console.error(err.stack)
+    } else {
+      console.error(String(err))
+    }
     return NextResponse.json({ error: "Server error" }, { status: 500 })
   }
 }
