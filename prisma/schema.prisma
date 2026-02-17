@@ -117,3 +117,28 @@ model Attachment {
   createdAt  DateTime @default(now())
 }
 
+model Session {
+  id         String   @id @default(uuid())
+  userId     String
+  user       Account  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Store only a hash of the opaque session token for lookup
+  tokenHash  String   @unique
+
+  // Device / client metadata
+  deviceName String?  // friendly device label (e.g. "David's iPhone")
+  ip         String?  // IPv4/IPv6 as string (consider hashing if stored long-term)
+  userAgent  String?
+  geo        Json?    // optional geo data (country, region) resolved server-side
+
+  // Usage / lifecycle
+  createdAt  DateTime @default(now())
+  lastSeen   DateTime?
+  expiresAt  DateTime?
+  revoked    Boolean  @default(false)
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+

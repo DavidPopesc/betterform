@@ -15,9 +15,17 @@ Should:
     - Date
     - Time
 - Have an account that can make different forms and view form responses
+    - Account can view forms in a Google forms fashion
+    - Account can view forms as a spreadsheet 
+    - Account can export form data as a csv
+    - Generic copy/paste code for forms built
+    - Have a QR code of the form readily available (literally a lucide icon already out there)
+    - Account can sign out other accounts.
+
+
 - Form data is encrypted, no data is stored in plaintext
 
-
+- Session token and everything important should be hashed
 Postgres DB Layout
 - Account
     - Account UUID
