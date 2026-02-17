@@ -89,7 +89,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
     if (!isDirty) return
     const id = setTimeout(() => {
       void saveForm()
-    }, 1000)
+    }, 5000)
     return () => clearTimeout(id)
   }, [fields, isDirty])
 
