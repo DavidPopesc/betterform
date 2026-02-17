@@ -1,27 +1,15 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import prisma from '@/lib/db'
-import crypto from 'crypto'
+import { getSessionUser } from '@/lib/auth-server'
 
-function sha256Hex(input: string) {
-  return crypto.createHash('sha256').update(input).digest('hex')
-}
-
-export async function POST(req: Request) {
+export async function POST() {
   try {
-    const cookieStore = (await Promise.resolve(cookies() as any)) as any
-    const token = cookieStore.get?.('bf_session')?.value
-    if (!token) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
-
-    const tokenHash = sha256Hex(token)
-    const session = await prisma.session.findFirst({ where: { tokenHash, revoked: false }, include: { user: true } })
-    if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
-
-    const accountId = session.user.id
+    const user = await getSessionUser()
+    if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
 
     const newForm = await prisma.form.create({
       data: {
-        accountId,
+        accountId: user.id,
         name: 'Untitled form',
         schema: { fields: [] },
       },

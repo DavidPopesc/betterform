@@ -1,26 +1,15 @@
-import { cookies } from "next/headers"
 import prisma from "@/lib/db"
-import crypto from "crypto"
 import { redirect } from "next/navigation"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import CreateFormButton from '@/components/create-form-button'
 import Image from "next/image"
 import FormCard from '@/components/form-card'
-function sha256Hex(input: string) {
-  return crypto.createHash("sha256").update(input).digest("hex")
-}
+import { getSessionUser } from '@/lib/auth-server'
 
 export default async function DashboardPage() {
-  const cookieStore = (await Promise.resolve(cookies() as any)) as any
-  const token = cookieStore.get?.("bf_session")?.value
-  if (!token) return redirect("/login")
-
-  const tokenHash = sha256Hex(token)
-  const session = await prisma.session.findFirst({ where: { tokenHash, revoked: false }, include: { user: true } })
-  if (!session || (session.expiresAt && session.expiresAt < new Date())) return redirect("/login")
-
-  const user = session.user
+  const user = await getSessionUser()
+  if (!user) return redirect("/login")
 
   const templates = [
     { title: "Assessment", color: "bg-amber-100" },
