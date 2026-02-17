@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import Editor from '@/components/form-editor/Editor'
+import Editor from '@/components/form-editor/editor'
 import { getSessionUser } from '@/lib/auth-server'
 import Image from "next/image"
 import Link from 'next/link'
