@@ -4,9 +4,9 @@ import { Pool } from "pg";
 
 declare global {
 	// eslint-disable-next-line no-var
-	var __prisma?: PrismaClient;
+	var __prisma: PrismaClient | undefined;
 	// eslint-disable-next-line no-var
-	var __pgPool?: Pool;
+	var __pgPool: Pool | undefined;
 }
 
 const connectionString = process.env.DATABASE_URL;
