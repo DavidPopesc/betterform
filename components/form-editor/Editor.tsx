@@ -183,14 +183,27 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
       type: 'multiple_choice',
       label: q.question,
       required: false,
-      order: fields.length + idx,
       options: q.options.map((opt, optIdx) => ({
         id: `opt_${Date.now()}_${idx}_${optIdx}`,
         label: opt,
       })),
     }))
 
-    setFields((prev) => [...prev, ...newFields])
+    setFields((prev) => {
+      // Insert after selected field; if nothing selected, append at end
+      const found = prev.findIndex((x) => x.id === selected)
+      const insertAt = found === -1 ? prev.length : found + 1
+      const next = [...prev]
+      next.splice(insertAt, 0, ...newFields)
+      // Recompute orders
+      const withOrder = next.map((it, i) => ({ ...it, order: i }))
+      return withOrder
+    })
+    
+    // Select the last imported field
+    if (newFields.length > 0) {
+      setSelected(newFields[newFields.length - 1].id)
+    }
     setIsDirty(true)
   }
 
