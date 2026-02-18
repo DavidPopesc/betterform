@@ -5,6 +5,7 @@ import TopBar, { type Tab } from './TopBar'
 import ResponsesTab from './tabs/ResponsesTab'
 import SendTab from './tabs/SendTab'
 import SettingsTab from './tabs/SettingsTab'
+import { ImportModal } from './ImportModal'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -36,10 +37,14 @@ export const FIELD_TYPES = [
   { value: 'time', label: 'Time' },
   { value: 'linear_scale', label: 'Linear scale' },
   { value: 'rating', label: 'Rating' },
+  { value: 'text', label: 'Text' },
+  { value: 'section', label: 'Section' },
 ] as const
 
 export function getDefaultLabel(type: string): string {
   const fieldType = FIELD_TYPES.find(ft => ft.value === type)
+  if (type === 'text') return 'Description text'
+  if (type === 'section') return 'Section break'
   return fieldType ? `${fieldType.label} question` : ''
 }
 
@@ -57,9 +62,9 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
   const [selected, setSelected] = React.useState<string | null>(fields[0]?.id ?? null)
   const [isSaving, setIsSaving] = React.useState(false)
   const [isDirty, setIsDirty] = React.useState(false)
-  const [lastSavedAt, setLastSavedAt] = React.useState<Date | null>(null)
   const [draggedIndex, setDraggedIndex] = React.useState<number | null>(null)
   const [dropTarget, setDropTarget] = React.useState<number | null>(null)
+  const [showImportModal, setShowImportModal] = React.useState(false)
 
   React.useEffect(() => {
     // load fields but strip any legacy `form_title` entries from stored schema
@@ -168,6 +173,27 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
     setIsDirty(true)
   }
 
+  function handleImport() {
+    setShowImportModal(true)
+  }
+
+  function handleImportQuestions(questions: Array<{ question: string; options: string[] }>) {
+    const newFields: Field[] = questions.map((q, idx) => ({
+      id: `field_${Date.now()}_${idx}`,
+      type: 'multiple_choice',
+      label: q.question,
+      required: false,
+      order: fields.length + idx,
+      options: q.options.map((opt, optIdx) => ({
+        id: `opt_${Date.now()}_${idx}_${optIdx}`,
+        label: opt,
+      })),
+    }))
+
+    setFields((prev) => [...prev, ...newFields])
+    setIsDirty(true)
+  }
+
   async function saveForm() {
     setIsSaving(true)
     try {
@@ -179,7 +205,6 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
       if (!res.ok) throw new Error('save-failed')
       // mark saved
       setIsDirty(false)
-      setLastSavedAt(new Date())
     } catch (err) {
       console.error('Save failed:', err)
     } finally {
@@ -253,7 +278,7 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
             {fields.length === 0 ? (
               <div className="text-sm text-muted-foreground py-8 text-center">
                 No fields yet — add one to get started.
-                <InspectorButtons onAdd={addField} className="justify-center mt-4" />
+                <InspectorButtons onAdd={addField} onImport={handleImport} className="justify-center mt-4" />
               </div>
             ) : (
               <div className="space-y-3">
@@ -340,24 +365,42 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
 
                       <div className="flex items-start gap-3">
                         <div className="flex-1 space-y-3">
-                        {/* Title with red asterisk if required */}
-                        <div className="flex items-start gap-2">
-                          <Input
+                        {/* Text field: single textarea for content */}
+                        {f.type === 'text' ? (
+                          <textarea
                             value={f.label}
                             onChange={(e) => updateField(f.id, { label: e.target.value })}
-                            placeholder="Question"
-                            className="text-base font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-b-2"
+                            placeholder="Enter text to display (this field cannot be edited by respondents)"
+                            className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm min-h-20 focus:outline-none focus:ring-2 focus:ring-primary"
+                            onClick={(e) => e.stopPropagation()}
                           />
-                          {f.required && <span className="text-destructive text-base">*</span>}
-                        </div>
+                        ) : f.type === 'section' ? (
+                          /* Section: just a visual divider */
+                          <div className="border-t-2 border-slate-300 py-4 text-sm text-muted-foreground text-center">
+                            Section break
+                          </div>
+                        ) : (
+                          /* Regular fields: title with red asterisk if required */
+                          <>
+                            <div className="flex items-start gap-2">
+                              <Input
+                                value={f.label}
+                                onChange={(e) => updateField(f.id, { label: e.target.value })}
+                                placeholder="Question"
+                                className="text-base font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-b-2"
+                              />
+                              {f.required && <span className="text-destructive text-base">*</span>}
+                            </div>
 
-                        {/* Description */}
-                        <Input
-                          value={f.description || ''}
-                          onChange={(e) => updateField(f.id, { description: e.target.value })}
-                          placeholder="Description (optional)"
-                          className="text-sm border-0 px-0 text-muted-foreground focus-visible:ring-0"
-                        />
+                            {/* Description */}
+                            <Input
+                              value={f.description || ''}
+                              onChange={(e) => updateField(f.id, { description: e.target.value })}
+                              placeholder="Description (optional)"
+                              className="text-sm border-0 px-0 text-muted-foreground focus-visible:ring-0"
+                            />
+                          </>
+                        )}
 
                         {/* Field type-specific content */}
                         {f.type === 'multiple_choice' && (
@@ -631,20 +674,22 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
                           </Button>
                         </div>
                         <div className="flex items-center gap-3">
-                          <label className="flex items-center gap-2 text-sm cursor-pointer">
-                            <span className="text-muted-foreground">Required</span>
-                            <input
-                              type="checkbox"
-                              checked={f.required || false}
-                              onChange={(e) => {
-                                e.stopPropagation()
-                                updateField(f.id, { required: e.target.checked })
-                              }}
-                              className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
-                                before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
-                                checked:before:translate-x-5"
-                            />
-                          </label>
+                          {!['text', 'section'].includes(f.type) && (
+                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                              <span className="text-muted-foreground">Required</span>
+                              <input
+                                type="checkbox"
+                                checked={f.required || false}
+                                onChange={(e) => {
+                                  e.stopPropagation()
+                                  updateField(f.id, { required: e.target.checked })
+                                }}
+                                className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                                  before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                                  checked:before:translate-x-5"
+                              />
+                            </label>
+                          )}
                           <Button
                             size="icon-sm"
                             variant="ghost"
@@ -678,7 +723,7 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
                   {selected === f.id && (
                     <div className="mt-3">
                       <Card className="p-2 w-full">
-                        <InspectorButtons onAdd={addField} />
+                        <InspectorButtons onAdd={addField} onImport={handleImport} />
                       </Card>
                     </div>
                   )}
@@ -699,6 +744,12 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
       {activeTab === 'responses' && <ResponsesTab />}
       {activeTab === 'send' && <SendTab publicId={publicId} formName={formName} />}
       {activeTab === 'settings' && <SettingsTab />}
+
+      <ImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImport={handleImportQuestions}
+      />
     </>
   )
 }

@@ -1,32 +1,30 @@
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
-import { CirclePlus, Import, CaseSensitive, Image, GalleryVertical } from 'lucide-react'
+import { CirclePlus, Import, GalleryVertical, Type } from 'lucide-react'
 
 interface Props {
   onAdd?: (type: string) => void
+  onImport?: () => void
   className?: string
   vertical?: boolean
 }
 
-export default function InspectorButtons({ onAdd, className, vertical }: Props) {
+export default function InspectorButtons({ onAdd, onImport, className, vertical }: Props) {
   const base = 'p-0'
   if (vertical) {
     return (
       <div className={className}>
         <div className="flex flex-col gap-3 items-center">
-          <Button variant="outline" size="icon-sm" className={base} onClick={() => onAdd?.('multiple_choice')}>
+          <Button variant="outline" size="icon-sm" className={base} onClick={() => onAdd?.('multiple_choice')} title="Add Question">
             <CirclePlus />
           </Button>
-          <Button variant="outline" size="icon-sm" className={base}>
+          <Button variant="outline" size="icon-sm" className={base} onClick={() => onImport?.()} title="Import Questions">
             <Import />
           </Button>
-          <Button variant="outline" size="icon-sm" className={base} onClick={() => onAdd?.('short_text')}>
-            <CaseSensitive />
+          <Button variant="outline" size="icon-sm" className={base} onClick={() => onAdd?.('text')} title="Add Text">
+            <Type />
           </Button>
-          {/* <Button variant="outline" size="icon-sm" className={base}>
-            <Image />
-          </Button> */}
-          <Button variant="outline" size="icon-sm" className={base}>
+          <Button variant="outline" size="icon-sm" className={base} onClick={() => onAdd?.('section')} title="Add Section">
             <GalleryVertical />
           </Button>
         </div>
@@ -37,19 +35,16 @@ export default function InspectorButtons({ onAdd, className, vertical }: Props) 
   return (
     <div className={className}>
       <div className="flex gap-3 items-center justify-center">
-        <Button variant="outline" size="icon-sm" className={base} onClick={() => onAdd?.('multiple_choice')}>
+        <Button variant="outline" size="icon-sm" className={base} onClick={() => onAdd?.('multiple_choice')} title="Add Question">
           <CirclePlus />
         </Button>
-        <Button variant="outline" size="icon-sm" className={base}>
+        <Button variant="outline" size="icon-sm" className={base} onClick={() => onImport?.()} title="Import Questions">
           <Import />
         </Button>
-        <Button variant="outline" size="icon-sm" className={base} onClick={() => onAdd?.('short_text')}>
-          <CaseSensitive />
+        <Button variant="outline" size="icon-sm" className={base} onClick={() => onAdd?.('text')} title="Add Text">
+          <Type />
         </Button>
-        {/* <Button variant="outline" size="icon-sm" className={base}>
-          <Image />
-        </Button> */}
-        <Button variant="outline" size="icon-sm" className={base}>
+        <Button variant="outline" size="icon-sm" className={base} onClick={() => onAdd?.('section')} title="Add Section">
           <GalleryVertical />
         </Button>
       </div>
