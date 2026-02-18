@@ -13,6 +13,8 @@ interface Field {
   description?: string
   required?: boolean
   options?: Array<{ id: string; label: string }>
+  points?: number
+  correctAnswer?: string | string[]
 }
 
 interface PublicFormProps {
@@ -20,6 +22,8 @@ interface PublicFormProps {
   formName: string
   fields: Field[]
   theme?: string
+  isQuiz?: boolean
+  showScore?: boolean
 }
 
 const THEME_COLORS: Record<string, { bg: string; border: string; input: string; button: string; text: string }> = {
@@ -60,11 +64,12 @@ const THEME_COLORS: Record<string, { bg: string; border: string; input: string; 
   },
 }
 
-export default function PublicForm({ publicId, formName, fields, theme = 'slate' }: PublicFormProps) {
+export default function PublicForm({ publicId, formName, fields, theme = 'slate', isQuiz = false, showScore = false }: PublicFormProps) {
   const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [responses, setResponses] = useState<Record<string, string | string[] | number>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [score, setScore] = useState<{ earned: number; total: number } | null>(null)
   const [error, setError] = useState('')
 
   // Filter out section fields for navigation
@@ -117,6 +122,34 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
     window.scrollTo(0, 0)
   }
 
+  const calculateScore = () => {
+    let earned = 0
+    let total = 0
+
+    fields.forEach(field => {
+      // Only score fields that have points and correct answers
+      if (!field.points || !field.correctAnswer) return
+
+      total += field.points
+      const userResponse = responses[field.id]
+
+      // Check if answer is correct
+      if (field.type === 'checkboxes' && Array.isArray(field.correctAnswer)) {
+        // For checkboxes, all correct answers must be selected
+        const userAnswers = Array.isArray(userResponse) ? userResponse : []
+        const correct = field.correctAnswer.sort().join(',') === userAnswers.sort().join(',')
+        if (correct) earned += field.points
+      } else {
+        // For single-choice questions (multiple_choice, dropdown)
+        if (userResponse === field.correctAnswer) {
+          earned += field.points
+        }
+      }
+    })
+
+    return { earned, total }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -126,6 +159,12 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
     if (missingRequired.length > 0) {
       setError('Please fill in all required fields')
       return
+    }
+
+    // Calculate score if quiz mode
+    if (isQuiz) {
+      const quizScore = calculateScore()
+      setScore(quizScore)
     }
 
     setIsSubmitting(true)
@@ -156,6 +195,17 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
             <div className="text-4xl mb-4">✓</div>
             <h2 className="text-2xl font-semibold mb-2">Thank you!</h2>
             <p className="text-muted-foreground">Your response has been recorded.</p>
+            {isQuiz && showScore && score && (
+              <div className="mt-6 pt-6 border-t">
+                <h3 className="text-xl font-semibold mb-2">Your Score</h3>
+                <div className="text-3xl font-bold text-primary mb-2">
+                  {score.earned} / {score.total}
+                </div>
+                <div className="text-muted-foreground">
+                  {Math.round((score.earned / score.total) * 100)}% correct
+                </div>
+              </div>
+            )}
           </Card>
         </div>
       </div>

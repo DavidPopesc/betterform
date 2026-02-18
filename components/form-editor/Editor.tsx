@@ -9,7 +9,7 @@ import { ImportModal } from './ImportModal'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Trash2, Copy, ArrowUp, ArrowDown, GripVertical } from 'lucide-react'
+import { Trash2, Copy, ArrowUp, ArrowDown, GripVertical, Check } from 'lucide-react'
 import InspectorButtons from './InspectorButtons'
 
 export type FieldOption = {
@@ -25,6 +25,8 @@ export type Field = {
   required?: boolean
   order?: number
   options?: FieldOption[]
+  points?: number
+  correctAnswer?: string | string[]
 }
 
 export const FIELD_TYPES = [
@@ -111,6 +113,23 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
   const [draggedIndex, setDraggedIndex] = React.useState<number | null>(null)
   const [dropTarget, setDropTarget] = React.useState<number | null>(null)
   const [showImportModal, setShowImportModal] = React.useState(false)
+  const [isQuiz, setIsQuiz] = React.useState(false)
+
+  // Load quiz mode setting
+  React.useEffect(() => {
+    async function loadQuizMode() {
+      try {
+        const res = await fetch(`/api/forms/${formId}/settings`)
+        if (res.ok) {
+          const data = await res.json()
+          setIsQuiz(data.isQuiz || false)
+        }
+      } catch (err) {
+        console.error('Failed to load quiz mode:', err)
+      }
+    }
+    void loadQuizMode()
+  }, [formId])
 
   React.useEffect(() => {
     // load fields but strip any legacy `form_title` entries from stored schema
@@ -465,9 +484,31 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                         {/* Field type-specific content */}
                         {f.type === 'multiple_choice' && (
                           <div className="space-y-2 mt-4">
+                            {isQuiz && (
+                              <div className="text-xs text-muted-foreground mb-2">
+                                Click the checkmark to mark the correct answer
+                              </div>
+                            )}
                             {f.options?.map((opt, optIdx) => (
                               <div key={opt.id} className="flex items-center gap-3">
-                                <div className="w-4 h-4 rounded-full border-2 border-slate-300 shrink-0" />
+                                {isQuiz ? (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      updateField(f.id, { correctAnswer: opt.id })
+                                    }}
+                                    className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition ${
+                                      f.correctAnswer === opt.id
+                                        ? 'bg-green-500 border-green-500'
+                                        : 'border-red-500 hover:border-green-400'
+                                    }`}
+                                    title="Mark as correct answer"
+                                  >
+                                    {f.correctAnswer === opt.id && <Check className="w-3 h-3 text-white" />}
+                                  </button>
+                                ) : (
+                                  <div className="w-4 h-4 rounded-full border-2 border-slate-300 shrink-0" />
+                                )}
                                 <Input
                                   value={opt.label}
                                   onChange={(e) => updateOption(f.id, opt.id, e.target.value)}
@@ -505,30 +546,61 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
 
                         {f.type === 'checkboxes' && (
                           <div className="space-y-2 mt-4">
-                            {f.options?.map((opt, optIdx) => (
-                              <div key={opt.id} className="flex items-center gap-3">
-                                <div className="w-4 h-4 rounded border-2 border-slate-300 shrink-0" />
-                                <Input
-                                  value={opt.label}
-                                  onChange={(e) => updateOption(f.id, opt.id, e.target.value)}
-                                  placeholder={`Option ${optIdx + 1}`}
-                                  className="flex-1 border-0 border-b rounded-none px-0 focus-visible:ring-0"
-                                />
-                                {f.options && f.options.length > 1 && (
-                                  <Button
-                                    size="icon-sm"
-                                    variant="ghost"
-                                    className="p-0"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      deleteOption(f.id, opt.id)
-                                    }}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                )}
+                            {isQuiz && (
+                              <div className="text-xs text-muted-foreground mb-2">
+                                Click the checkmark to select correct answer(s)
                               </div>
-                            ))}
+                            )}
+                            {f.options?.map((opt, optIdx) => {
+                              const correctAnswers = Array.isArray(f.correctAnswer) ? f.correctAnswer : []
+                              const isCorrect = correctAnswers.includes(opt.id)
+                              
+                              return (
+                                <div key={opt.id} className="flex items-center gap-3">
+                                  {isQuiz ? (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        const current = Array.isArray(f.correctAnswer) ? f.correctAnswer : []
+                                        const updated = isCorrect
+                                          ? current.filter(id => id !== opt.id)
+                                          : [...current, opt.id]
+                                        updateField(f.id, { correctAnswer: updated })
+                                      }}
+                                      className={`w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition ${
+                                        isCorrect
+                                          ? 'bg-green-500 border-green-500'
+                                          : 'border-red-500 hover:border-green-400'
+                                      }`}
+                                      title="Mark as correct answer"
+                                    >
+                                      {isCorrect && <Check className="w-3 h-3 text-white" />}
+                                    </button>
+                                  ) : (
+                                    <div className="w-4 h-4 rounded border-2 border-slate-300 shrink-0" />
+                                  )}
+                                  <Input
+                                    value={opt.label}
+                                    onChange={(e) => updateOption(f.id, opt.id, e.target.value)}
+                                    placeholder={`Option ${optIdx + 1}`}
+                                    className="flex-1 border-0 border-b rounded-none px-0 focus-visible:ring-0"
+                                  />
+                                  {f.options && f.options.length > 1 && (
+                                    <Button
+                                      size="icon-sm"
+                                      variant="ghost"
+                                      className="p-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        deleteOption(f.id, opt.id)
+                                      }}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              )
+                            })}
                             <Button
                               size="sm"
                               variant="ghost"
@@ -545,9 +617,31 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
 
                         {f.type === 'dropdown' && (
                           <div className="space-y-2 mt-4">
+                            {isQuiz && (
+                              <div className="text-xs text-muted-foreground mb-2">
+                                Click the checkmark to mark the correct answer
+                              </div>
+                            )}
                             {f.options?.map((opt, optIdx) => (
                               <div key={opt.id} className="flex items-center gap-3">
-                                <div className="text-muted-foreground text-sm shrink-0">{optIdx + 1}.</div>
+                                {isQuiz ? (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      updateField(f.id, { correctAnswer: opt.id })
+                                    }}
+                                    className={`w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition ${
+                                      f.correctAnswer === opt.id
+                                        ? 'bg-green-500 border-green-500'
+                                        : 'border-slate-300 hover:border-green-400'
+                                    }`}
+                                    title="Mark as correct answer"
+                                  >
+                                    {f.correctAnswer === opt.id && <Check className="w-3 h-3 text-white" />}
+                                  </button>
+                                ) : (
+                                  <div className="text-muted-foreground text-sm shrink-0">{optIdx + 1}.</div>
+                                )}
                                 <Input
                                   value={opt.label}
                                   onChange={(e) => updateOption(f.id, opt.id, e.target.value)}
@@ -757,20 +851,37 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                         </div>
                         <div className="flex items-center gap-3">
                           {!['text', 'section'].includes(f.type) && (
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                              <span className="text-muted-foreground">Required</span>
-                              <input
-                                type="checkbox"
-                                checked={f.required || false}
-                                onChange={(e) => {
-                                  e.stopPropagation()
-                                  updateField(f.id, { required: e.target.checked })
-                                }}
-                                className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
-                                  before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
-                                  checked:before:translate-x-5"
-                              />
-                            </label>
+                            <>
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <span className="text-muted-foreground">Required</span>
+                                <input
+                                  type="checkbox"
+                                  checked={f.required || false}
+                                  onChange={(e) => {
+                                    e.stopPropagation()
+                                    updateField(f.id, { required: e.target.checked })
+                                  }}
+                                  className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                                    before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                                    checked:before:translate-x-5"
+                                />
+                              </label>
+                              {isQuiz && (
+                                <label className="flex items-center gap-2 text-sm">
+                                  <span className="text-muted-foreground">Points</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={f.points || 0}
+                                    onChange={(e) => {
+                                      e.stopPropagation()
+                                      updateField(f.id, { points: parseInt(e.target.value) || 0 })
+                                    }}
+                                    className="w-16 border border-slate-200 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                  />
+                                </label>
+                              )}
+                            </>
                           )}
                           <Button
                             size="icon-sm"
@@ -826,7 +937,7 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
       {activeTab === 'responses' && <ResponsesTab formId={formId} fields={fields} />}
       {activeTab === 'send' && <SendTab publicId={publicId} formName={formName} />}
       {activeTab === 'settings' && (
-        <SettingsTab formId={formId} theme={theme} onThemeChange={setTheme} />
+        <SettingsTab formId={formId} theme={theme} onThemeChange={setTheme} onQuizModeChange={setIsQuiz} />
       )}
       </div>
 

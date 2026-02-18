@@ -24,6 +24,8 @@ export async function GET(
         apiEnabled: true,
         apiKey: true,
         theme: true,
+        isQuiz: true,
+        showScore: true,
       }
     })
     
@@ -35,6 +37,8 @@ export async function GET(
       apiEnabled: form.apiEnabled,
       apiKey: form.apiKey,
       theme: form.theme,
+      isQuiz: form.isQuiz,
+      showScore: form.showScore,
     })
   } catch (err) {
     console.error('Fetch settings error:', err)
@@ -59,7 +63,7 @@ export async function POST(
     // Verify form ownership
     const form = await prisma.form.findUnique({ 
       where: { id: formId },
-      select: { accountId: true, apiEnabled: true, apiKey: true, theme: true }
+      select: { accountId: true, apiEnabled: true, apiKey: true, theme: true, isQuiz: true, showScore: true }
     })
     
     if (!form || form.accountId !== user.id) {
@@ -79,6 +83,30 @@ export async function POST(
       })
       
       return NextResponse.json({ theme })
+    }
+    
+    // Handle quiz mode toggle
+    if (body.isQuiz !== undefined) {
+      const isQuiz = Boolean(body.isQuiz)
+      
+      await prisma.form.update({
+        where: { id: formId },
+        data: { isQuiz },
+      })
+      
+      return NextResponse.json({ isQuiz })
+    }
+    
+    // Handle show score toggle
+    if (body.showScore !== undefined) {
+      const showScore = Boolean(body.showScore)
+      
+      await prisma.form.update({
+        where: { id: formId },
+        data: { showScore },
+      })
+      
+      return NextResponse.json({ showScore })
     }
     
     // Handle API toggle

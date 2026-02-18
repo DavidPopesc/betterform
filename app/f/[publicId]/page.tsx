@@ -16,6 +16,8 @@ export default async function PublicFormPage({
       name: true,
       schema: true,
       theme: true,
+      isQuiz: true,
+      showScore: true,
     },
   })
 
@@ -33,6 +35,8 @@ export default async function PublicFormPage({
       formName={form.name || 'Untitled form'} 
       fields={fields}
       theme={theme}
+      isQuiz={form.isQuiz ?? false}
+      showScore={form.showScore ?? false}
     />
   )
 }

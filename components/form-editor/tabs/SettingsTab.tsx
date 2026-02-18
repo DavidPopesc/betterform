@@ -10,6 +10,7 @@ interface SettingsTabProps {
   formId: string
   theme: string
   onThemeChange: (theme: string) => void
+  onQuizModeChange?: (isQuiz: boolean) => void
 }
 
 const THEMES = [
@@ -20,7 +21,9 @@ const THEMES = [
   { id: 'pink', label: 'Pink', color: 'bg-pink-500' },
 ]
 
-export default function SettingsTab({ formId, theme, onThemeChange }: SettingsTabProps) {
+export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeChange }: SettingsTabProps) {
+  const [isQuiz, setIsQuiz] = useState(false)
+  const [showScore, setShowScore] = useState(false)
   const [apiEnabled, setApiEnabled] = useState(false)
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -33,6 +36,8 @@ export default function SettingsTab({ formId, theme, onThemeChange }: SettingsTa
       if (res.ok) {
         const data = await res.json()
         onThemeChange(data.theme || 'blue')
+        setIsQuiz(data.isQuiz || false)
+        setShowScore(data.showScore || false)
         setApiEnabled(data.apiEnabled || false)
         setApiKey(data.apiKey || null)
       }
@@ -58,6 +63,41 @@ export default function SettingsTab({ formId, theme, onThemeChange }: SettingsTa
       })
     } catch (err) {
       console.error('Failed to update theme:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function toggleQuizMode() {
+    const newIsQuiz = !isQuiz
+    setIsQuiz(newIsQuiz)
+    onQuizModeChange?.(newIsQuiz)
+    setSaving(true)
+    try {
+      await fetch(`/api/forms/${formId}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isQuiz: newIsQuiz }),
+      })
+    } catch (err) {
+      console.error('Failed to update quiz mode:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function toggleShowScore() {
+    const newShowScore = !showScore
+    setShowScore(newShowScore)
+    setSaving(true)
+    try {
+      await fetch(`/api/forms/${formId}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ showScore: newShowScore }),
+      })
+    } catch (err) {
+      console.error('Failed to update show score:', err)
     } finally {
       setSaving(false)
     }
@@ -152,6 +192,43 @@ export default function SettingsTab({ formId, theme, onThemeChange }: SettingsTa
               </button>
             ))}
           </div>
+        </Card>
+        
+        <Card className="p-6">
+          <h4 className="font-semibold mb-4">Quiz Mode</h4>
+          <p className="text-sm text-muted-foreground mb-4">
+            Enable quiz mode to assign point values to questions and calculate scores
+          </p>
+          <div className="flex items-center gap-4 mb-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <span className="text-muted-foreground">Enable Quiz Mode</span>
+              <input
+                type="checkbox"
+                checked={isQuiz}
+                onChange={toggleQuizMode}
+                disabled={saving}
+                className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                  before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                  checked:before:translate-x-5 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </label>
+          </div>
+          {isQuiz && (
+            <div className="flex items-center gap-4 border-t pt-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <span className="text-muted-foreground">Show score to respondents</span>
+                <input
+                  type="checkbox"
+                  checked={showScore}
+                  onChange={toggleShowScore}
+                  disabled={saving}
+                  className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                    before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                    checked:before:translate-x-5 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </label>
+            </div>
+          )}
         </Card>
         
         <Card className="p-6">
