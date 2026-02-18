@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Lock } from 'lucide-react'
 
 interface Field {
   id: string
@@ -401,18 +402,6 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
         <Card className="p-8 mb-6">
           <h1 className="text-3xl font-bold mb-2">{formName || 'Untitled form'}</h1>
           
-          {!responsesEnabled && (
-            <div className="mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-900">
-              <span className="font-semibold">This form is not accepting responses.</span>
-            </div>
-          )}
-          
-          {responsesEnabled && responseDeadline && new Date() > new Date(responseDeadline) && (
-            <div className="mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-900">
-              <span className="font-semibold">This form is no longer accepting responses.</span> The response deadline has passed.
-            </div>
-          )}
-          
           {isQuiz && (() => {
             const totalPoints = fields.reduce((sum, f) => {
               if (['text', 'section', 'email', 'phone'].includes(f.type)) return sum
@@ -431,49 +420,61 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
           )}
         </Card>
 
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-4">
-            {pageFields.map((field) => (
-              <Card key={field.id} className="p-6">
-                <Label className="text-base mb-3 block">
-                  {field.label}
-                  {field.required && <span className="text-destructive ml-1">*</span>}
-                </Label>
-                {field.description && (
-                  <p className="text-sm text-muted-foreground mb-3">{field.description}</p>
+        {!responsesEnabled || (responseDeadline && new Date() > new Date(responseDeadline)) ? (
+          <Card className="p-8 text-center">
+            <Lock className="mx-auto mb-4" />
+            <h2 className="text-2xl font-semibold mb-2">Form Closed</h2>
+            <p className="text-muted-foreground">
+              {!responsesEnabled 
+                ? 'This form is not accepting responses.' 
+                : 'The response deadline has passed. This form is no longer accepting submissions.'}
+            </p>
+          </Card>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-4">
+              {pageFields.map((field) => (
+                <Card key={field.id} className="p-6">
+                  <Label className="text-base mb-3 block">
+                    {field.label}
+                    {field.required && <span className="text-destructive ml-1">*</span>}
+                  </Label>
+                  {field.description && (
+                    <p className="text-sm text-muted-foreground mb-3">{field.description}</p>
+                  )}
+                  {renderField(field)}
+                </Card>
+              ))}
+            </div>
+
+            {error && (
+              <div className="mt-4 p-4 bg-destructive/10 text-destructive rounded-md text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="mt-6 flex items-center justify-between">
+              <div>
+                {currentPage > 0 && (
+                  <Button type="button" variant="outline" onClick={handlePrevious}>
+                    Previous
+                  </Button>
                 )}
-                {renderField(field)}
-              </Card>
-            ))}
-          </div>
-
-          {error && (
-            <div className="mt-4 p-4 bg-destructive/10 text-destructive rounded-md text-sm">
-              {error}
+              </div>
+              <div>
+                {isLastPage ? (
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? 'Submitting...' : 'Submit'}
+                  </Button>
+                ) : (
+                  <Button type="button" onClick={handleNext}>
+                    Next
+                  </Button>
+                )}
+              </div>
             </div>
-          )}
-
-          <div className="mt-6 flex items-center justify-between">
-            <div>
-              {currentPage > 0 && (
-                <Button type="button" variant="outline" onClick={handlePrevious} disabled={!responsesEnabled || !!(responseDeadline && new Date() > new Date(responseDeadline))}>
-                  Previous
-                </Button>
-              )}
-            </div>
-            <div>
-              {isLastPage ? (
-                <Button type="submit" disabled={isSubmitting || !responsesEnabled || !!(responseDeadline && new Date() > new Date(responseDeadline))}>
-                  {!responsesEnabled || !!(responseDeadline && new Date() > new Date(responseDeadline)) ? 'Form closed' : isSubmitting ? 'Submitting...' : 'Submit'}
-                </Button>
-              ) : (
-                <Button type="button" onClick={handleNext} disabled={!responsesEnabled || !!(responseDeadline && new Date() > new Date(responseDeadline))}>
-                  Next
-                </Button>
-              )}
-            </div>
-          </div>
-        </form>
+          </form>
+        )}
       </div>
     </div>
   )
