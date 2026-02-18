@@ -86,31 +86,110 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
   // Check if any field requires verified email
   const hasVerifiedEmailField = fields.some(f => f.type === 'email' && f.requireVerifiedEmail)
 
-  // Fetch verified emails on mount if needed
+  // localStorage key for this form
+  const storageKey = `form-responses-${publicId}`
+
+  // Load responses from localStorage on mount
   useEffect(() => {
-    if (hasVerifiedEmailField) {
-      fetch('/api/verify-email/account')
-        .then(res => res.json())
-        .then(data => {
-          if (data.verifiedEmails) {
-            setVerifiedEmails(data.verifiedEmails)
-          }
-        })
-        .catch(console.error)
+    try {
+      const saved = localStorage.getItem(storageKey)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        setResponses(parsed)
+      }
+    } catch (err) {
+      console.error('Failed to load saved responses:', err)
     }
-  }, [hasVerifiedEmailField])
+  }, [storageKey])
+
+  // Save responses to localStorage whenever they change
+  useEffect(() => {
+    if (Object.keys(responses).length > 0) {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(responses))
+      } catch (err) {
+        console.error('Failed to save responses:', err)
+      }
+    }
+  }, [responses, storageKey])
+
+  // Fetch verified emails on mount and poll every 5 seconds if verification is pending
+  useEffect(() => {
+    if (!hasVerifiedEmailField) return
+
+    const fetchVerifiedEmails = async () => {
+      try {
+        const res = await fetch('/api/verify-email/account')
+        const data = await res.json()
+        if (data.verifiedEmails) {
+          setVerifiedEmails(prev => {
+            const newEmails = data.verifiedEmails as string[]
+            // Check if any new emails were verified
+            const hasNewEmails = newEmails.some(email => 
+              !prev.some(e => e.toLowerCase().trim() === email.toLowerCase().trim())
+            )
+            
+            if (hasNewEmails) {
+              // Auto-select newly verified email if there's a verification pending
+              const emailField = fields.find(f => f.type === 'email' && f.requireVerifiedEmail)
+              if (emailField) {
+                const currentEmail = responses[emailField.id] as string
+                const wasJustVerified = newEmails.find(e => 
+                  e.toLowerCase().trim() === currentEmail?.toLowerCase().trim()
+                )
+                if (wasJustVerified && verificationSent[currentEmail]) {
+                  // Clear the verification sent badge
+                  setVerificationSent(prev => ({ ...prev, [currentEmail]: false }))
+                }
+              }
+            }
+            
+            return newEmails
+          })
+        }
+      } catch (err) {
+        console.error('Failed to fetch verified emails:', err)
+      }
+    }
+
+    // Initial fetch
+    fetchVerifiedEmails()
+
+    // Poll every 5 seconds if there are pending verifications
+    const hasPendingVerifications = Object.values(verificationSent).some(v => v)
+    if (hasPendingVerifications) {
+      const interval = setInterval(fetchVerifiedEmails, 5000)
+      return () => clearInterval(interval)
+    }
+  }, [hasVerifiedEmailField, verificationSent, fields, responses])
 
   // Listen for verification messages from popup
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'email-verified' && event.data.email) {
-        setVerifiedEmails(prev => [...prev, event.data.email])
-        setVerificationSent(prev => ({ ...prev, [event.data.email]: false }))
+        const verifiedEmail = event.data.email
+        
+        // Add to verified emails list (deduplicated)
+        setVerifiedEmails(prev => {
+          const emailLower = verifiedEmail.toLowerCase().trim()
+          const alreadyExists = prev.some(e => e.toLowerCase().trim() === emailLower)
+          if (alreadyExists) return prev
+          return [...prev, verifiedEmail]
+        })
+        
+        // Clear verification sent state
+        setVerificationSent(prev => ({ ...prev, [verifiedEmail]: false }))
+        
+        // Find email field and auto-select the verified email
+        const emailField = fields.find(f => f.type === 'email' && f.requireVerifiedEmail)
+        if (emailField) {
+          handleInputChange(emailField.id, verifiedEmail)
+        }
       }
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [])
+  }, [fields])
 
   // Filter out section fields for navigation
   const sections = fields.filter(f => f.type === 'section')
@@ -222,12 +301,36 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
         body: JSON.stringify({ responses }),
       })
 
+      const data = await res.json()
+
       if (!res.ok) {
-        throw new Error('Submission failed')
+        // Handle specific error cases
+        if (data.error === 'email_not_verified') {
+          setError('Please verify your email address before submitting.')
+        } else if (data.error === 'already_submitted') {
+          setError('You have already submitted this form. Only one response per user is allowed.')
+        } else if (data.error === 'email_already_submitted') {
+          setError('This email address has already been used to submit this form.')
+        } else if (data.error === 'form_closed') {
+          setError('This form is no longer accepting responses.')
+        } else if (data.error === 'deadline_passed') {
+          setError('The response deadline has passed.')
+        } else {
+          setError(data.message || 'Failed to submit form. Please try again.')
+        }
+        return
+      }
+
+      // Clear saved form data on successful submission
+      try {
+        localStorage.removeItem(storageKey)
+      } catch (err) {
+        console.error('Failed to clear saved responses:', err)
       }
 
       setSubmitted(true)
-    } catch {
+    } catch (err) {
+      console.error('Submission error:', err)
       setError('Failed to submit form. Please try again.')
     } finally {
       setIsSubmitting(false)
@@ -322,7 +425,14 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
               const data = await res.json()
               if (data.success) {
                 if (data.alreadyVerified) {
-                  setVerifiedEmails(prev => [...new Set([...prev, email])])
+                  setVerifiedEmails(prev => {
+                    const emailLower = email.toLowerCase().trim()
+                    const alreadyExists = prev.some(e => e.toLowerCase().trim() === emailLower)
+                    if (alreadyExists) return prev
+                    return [...prev, email]
+                  })
+                  // Auto-select the verified email
+                  handleInputChange(field.id, email)
                 } else {
                   setVerificationSent(prev => ({ ...prev, [email]: true }))
                 }
