@@ -25,8 +25,8 @@ interface PublicFormProps {
   theme?: string
   isQuiz?: boolean
   showScore?: boolean
-  responsesEnabled?: boolean
-  responseDeadline?: Date | null
+  isClosed?: boolean
+  closedReason?: string
   successMessage?: string
 }
 
@@ -68,7 +68,7 @@ const THEME_COLORS: Record<string, { bg: string; border: string; input: string; 
   },
 }
 
-export default function PublicForm({ publicId, formName, fields, theme = 'slate', isQuiz = false, showScore = false, responsesEnabled = true, responseDeadline = null, successMessage = 'Your response has been recorded.' }: PublicFormProps) {
+export default function PublicForm({ publicId, formName, fields, theme = 'slate', isQuiz = false, showScore = false, isClosed = false, closedReason = 'This form is not accepting responses.', successMessage = 'Your response has been recorded.' }: PublicFormProps) {
   const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [responses, setResponses] = useState<Record<string, string | string[] | number>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -420,14 +420,12 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
           )}
         </Card>
 
-        {!responsesEnabled || (responseDeadline && new Date() > new Date(responseDeadline)) ? (
+        {isClosed ? (
           <Card className="p-8 text-center">
             <Lock className="mx-auto mb-4" />
             <h2 className="text-2xl font-semibold mb-2">Form Closed</h2>
             <p className="text-muted-foreground">
-              {!responsesEnabled 
-                ? 'This form is not accepting responses.' 
-                : 'The response deadline has passed. This form is no longer accepting submissions.'}
+              {closedReason}
             </p>
           </Card>
         ) : (

@@ -28,8 +28,13 @@ export default async function PublicFormPage({
     notFound()
   }
 
+  // Check if form is closed
+  const isClosed = !form.responsesEnabled || (form.responseDeadline ? new Date() > new Date(form.responseDeadline) : false)
+  
   const schema = form.schema as { fields?: Array<Record<string, unknown>> }
-  const fields = (schema.fields || []) as any[] // Type assertion for fields - schema validation happens at runtime
+  // Don't send fields to client if form is closed; type assertion safe as schema validation happens at form creation
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fields = (isClosed ? [] : (schema.fields || [])) as any[]
   const theme = form.theme ?? 'slate'
 
   return (
@@ -40,8 +45,10 @@ export default async function PublicFormPage({
       theme={theme}
       isQuiz={form.isQuiz ?? false}
       showScore={form.showScore ?? false}
-      responsesEnabled={form.responsesEnabled ?? true}
-      responseDeadline={form.responseDeadline}
+      isClosed={isClosed}
+      closedReason={!form.responsesEnabled 
+        ? 'This form is not accepting responses.' 
+        : 'The response deadline has passed. This form is no longer accepting submissions.'}
       successMessage={form.successMessage ?? 'Your response has been recorded.'}
     />
   )
