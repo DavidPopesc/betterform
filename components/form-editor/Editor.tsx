@@ -5,23 +5,48 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 
-import { CirclePlus, Import, CaseSensitive, Image, GalleryVertical } from 'lucide-react'
+import { Trash2, Copy } from 'lucide-react'
 import InspectorButtons from './InspectorButtons'
+
+type FieldOption = {
+  id: string
+  label: string
+}
+
 type Field = {
   id: string
   type: string
   label: string
+  description?: string
   required?: boolean
   order?: number
+  options?: FieldOption[]
+}
+
+const FIELD_TYPES = [
+  { value: 'short_text', label: 'Short answer' },
+  { value: 'paragraph', label: 'Paragraph' },
+  { value: 'multiple_choice', label: 'Multiple choice' },
+  { value: 'checkboxes', label: 'Checkboxes' },
+  { value: 'dropdown', label: 'Dropdown' },
+  { value: 'date', label: 'Date' },
+  { value: 'time', label: 'Time' },
+  { value: 'linear_scale', label: 'Linear scale' },
+  { value: 'rating', label: 'Rating' },
+] as const
+
+function getDefaultLabel(type: string): string {
+  const fieldType = FIELD_TYPES.find(ft => ft.value === type)
+  return fieldType ? `${fieldType.label} question` : ''
 }
 
 interface EditorProps {
   formId: string
-  initialSchema: any
+  initialSchema: { fields?: unknown[]; name?: string; title?: string }
 }
 
 export default function Editor({ formId, initialSchema }: EditorProps) {
-  const [fields, setFields] = React.useState<Field[]>(initialSchema.fields ?? [])
+  const [fields, setFields] = React.useState<Field[]>((initialSchema.fields as Field[]) ?? [])
   // form name (stored in DB `name`), and fields (schema) stored separately
   const [formName, setFormName] = React.useState<string>(initialSchema?.name ?? initialSchema?.title ?? 'Untitled form')
   const [selected, setSelected] = React.useState<string | null>(fields[0]?.id ?? null)
@@ -31,15 +56,24 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
 
   React.useEffect(() => {
     // load fields but strip any legacy `form_title` entries from stored schema
-    const loaded = (initialSchema.fields ?? []).filter((f: Field) => f.type !== 'form_title')
-    setFields(loaded.map((f: Field, i: number) => ({ ...f, order: i })))
-    setFormName(initialSchema?.name ?? initialSchema?.name ?? 'Untitled form')
+    const loaded = ((initialSchema.fields ?? []) as Field[]).filter((f) => f.type !== 'form_title')
+    setFields(loaded.map((f, i) => ({ ...f, order: i })))
+    setFormName(initialSchema?.name ?? 'Untitled form')
     setSelected((loaded[0]?.id) ?? null)
   }, [initialSchema])
 
   function addField(type: string) {
     const id = `field_${Math.random().toString(36).slice(2, 9)}`
-    const f: Field = { id, type, label: `New ${type.replace(/_/g, ' ')}` }
+    const f: Field = { 
+      id, 
+      type, 
+      label: getDefaultLabel(type),
+      description: '',
+    }
+    // Initialize options for choice-based fields
+    if (['multiple_choice', 'checkboxes', 'dropdown'].includes(type)) {
+      f.options = [{ id: `opt_${Math.random().toString(36).slice(2, 9)}`, label: 'Option 1' }]
+    }
     setFields((s) => {
       // insert after selected field; if nothing selected, append at end
       const found = s.findIndex((x) => x.id === selected)
@@ -52,6 +86,51 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
     })
     setSelected(id)
     setIsDirty(true)
+  }
+
+  function duplicateField(id: string) {
+    const field = fields.find((f) => f.id === id)
+    if (!field) return
+    const newId = `field_${Math.random().toString(36).slice(2, 9)}`
+    const duplicate: Field = {
+      ...field,
+      id: newId,
+      options: field.options?.map((opt) => ({
+        ...opt,
+        id: `opt_${Math.random().toString(36).slice(2, 9)}`,
+      })),
+    }
+    setFields((s) => {
+      const idx = s.findIndex((f) => f.id === id)
+      const next = [...s]
+      next.splice(idx + 1, 0, duplicate)
+      const withOrder = next.map((it, i) => ({ ...it, order: i }))
+      return withOrder
+    })
+    setSelected(newId)
+    setIsDirty(true)
+  }
+
+  function addOption(fieldId: string) {
+    const field = fields.find((f) => f.id === fieldId)
+    if (!field) return
+    const optId = `opt_${Math.random().toString(36).slice(2, 9)}`
+    const newOpt: FieldOption = { id: optId, label: `Option ${(field.options?.length || 0) + 1}` }
+    updateField(fieldId, { options: [...(field.options || []), newOpt] })
+  }
+
+  function updateOption(fieldId: string, optionId: string, label: string) {
+    const field = fields.find((f) => f.id === fieldId)
+    if (!field || !field.options) return
+    const updated = field.options.map((opt) => (opt.id === optionId ? { ...opt, label } : opt))
+    updateField(fieldId, { options: updated })
+  }
+
+  function deleteOption(fieldId: string, optionId: string) {
+    const field = fields.find((f) => f.id === fieldId)
+    if (!field || !field.options || field.options.length <= 1) return
+    const updated = field.options.filter((opt) => opt.id !== optionId)
+    updateField(fieldId, { options: updated })
   }
 
   function deleteField(id: string) {
@@ -69,6 +148,8 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
     setIsDirty(true)
   }
 
+  // moveField kept for potential future drag-reordering feature
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function moveField(from: number, to: number) {
     if (to < 0 || to >= fields.length) return
     const updated = [...fields]
@@ -104,18 +185,19 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
       void saveForm()
     }, 5000)
     return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fields, isDirty, formName])
 
   // Try to persist on unload using navigator.sendBeacon as a best-effort
   React.useEffect(() => {
-    function handleBeforeUnload(e: BeforeUnloadEvent) {
+    function handleBeforeUnload() {
       if (!isDirty) return
       try {
         const url = `/api/forms/${formId}/save`
         const payload = JSON.stringify({ name: formName, schema: { fields } })
         const blob = new Blob([payload], { type: 'application/json' })
         navigator.sendBeacon(url, blob)
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
@@ -123,8 +205,6 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [fields, isDirty, formId, formName])
 
-  const selectedField = fields.find((f) => f.id === selected) ?? null
-  const selectedIndex = fields.findIndex((f) => f.id === selected)
   const inspectorRef = React.useRef<HTMLDivElement | null>(null)
   const [inspectorPos, setInspectorPos] = React.useState<{ top: number; left: number; visible: boolean }>({ top: 0, left: 0, visible: false })
 
@@ -241,38 +321,272 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
                     }`}
                     onClick={() => setSelected(f.id)}
                   >
-                    <div className="flex items-start">
-                      <div className="flex-1">
-                        {f.type === 'form_title' ? (
-                          <div>
-                            <Input
-                              value={f.label}
-                              onChange={(e) => updateField(f.id, { label: e.target.value })}
-                              placeholder="Form title"
-                              className="text-2xl font-semibold"
-                            />
-                          </div>
-                        ) : (
-                          <div>
-                            <div className="text-xs text-muted-foreground uppercase tracking-wide">
-                              {f.type} {f.required && '(required)'}
-                            </div>
-                            <div className="font-medium mt-1">{f.label}</div>
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 space-y-3">
+                        {/* Title with red asterisk if required */}
+                        <div className="flex items-start gap-2">
+                          <Input
+                            value={f.label}
+                            onChange={(e) => updateField(f.id, { label: e.target.value })}
+                            placeholder="Question"
+                            className="text-base font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-b-2"
+                          />
+                          {f.required && <span className="text-destructive text-base">*</span>}
+                        </div>
+
+                        {/* Description */}
+                        <Input
+                          value={f.description || ''}
+                          onChange={(e) => updateField(f.id, { description: e.target.value })}
+                          placeholder="Description (optional)"
+                          className="text-sm border-0 px-0 text-muted-foreground focus-visible:ring-0"
+                        />
+
+                        {/* Field type-specific content */}
+                        {f.type === 'multiple_choice' && (
+                          <div className="space-y-2 mt-4">
+                            {f.options?.map((opt, optIdx) => (
+                              <div key={opt.id} className="flex items-center gap-3">
+                                <div className="w-4 h-4 rounded-full border-2 border-slate-300 shrink-0" />
+                                <Input
+                                  value={opt.label}
+                                  onChange={(e) => updateOption(f.id, opt.id, e.target.value)}
+                                  placeholder={`Option ${optIdx + 1}`}
+                                  className="flex-1 border-0 border-b rounded-none px-0 focus-visible:ring-0"
+                                />
+                                {f.options && f.options.length > 1 && (
+                                  <Button
+                                    size="icon-sm"
+                                    variant="ghost"
+                                    className="p-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      deleteOption(f.id, opt.id)
+                                    }}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                addOption(f.id)
+                              }}
+                              className="text-muted-foreground"
+                            >
+                              Add option
+                            </Button>
                           </div>
                         )}
+
+                        {f.type === 'checkboxes' && (
+                          <div className="space-y-2 mt-4">
+                            {f.options?.map((opt, optIdx) => (
+                              <div key={opt.id} className="flex items-center gap-3">
+                                <div className="w-4 h-4 rounded border-2 border-slate-300 shrink-0" />
+                                <Input
+                                  value={opt.label}
+                                  onChange={(e) => updateOption(f.id, opt.id, e.target.value)}
+                                  placeholder={`Option ${optIdx + 1}`}
+                                  className="flex-1 border-0 border-b rounded-none px-0 focus-visible:ring-0"
+                                />
+                                {f.options && f.options.length > 1 && (
+                                  <Button
+                                    size="icon-sm"
+                                    variant="ghost"
+                                    className="p-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      deleteOption(f.id, opt.id)
+                                    }}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                addOption(f.id)
+                              }}
+                              className="text-muted-foreground"
+                            >
+                              Add option
+                            </Button>
+                          </div>
+                        )}
+
+                        {f.type === 'dropdown' && (
+                          <div className="space-y-2 mt-4">
+                            {f.options?.map((opt, optIdx) => (
+                              <div key={opt.id} className="flex items-center gap-3">
+                                <div className="text-muted-foreground text-sm shrink-0">{optIdx + 1}.</div>
+                                <Input
+                                  value={opt.label}
+                                  onChange={(e) => updateOption(f.id, opt.id, e.target.value)}
+                                  placeholder={`Option ${optIdx + 1}`}
+                                  className="flex-1 border-0 border-b rounded-none px-0 focus-visible:ring-0"
+                                />
+                                {f.options && f.options.length > 1 && (
+                                  <Button
+                                    size="icon-sm"
+                                    variant="ghost"
+                                    className="p-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      deleteOption(f.id, opt.id)
+                                    }}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                addOption(f.id)
+                              }}
+                              className="text-muted-foreground"
+                            >
+                              Add option
+                            </Button>
+                          </div>
+                        )}
+
+                        {f.type === 'short_text' && (
+                          <div className="mt-4">
+                            <Input
+                              placeholder="Short answer text"
+                              disabled
+                              className="bg-transparent border-0 border-b rounded-none"
+                            />
+                          </div>
+                        )}
+
+                        {f.type === 'paragraph' && (
+                          <div className="mt-4">
+                            <Input
+                              placeholder="Long answer text"
+                              disabled
+                              className="bg-transparent border-0 border-b rounded-none"
+                            />
+                          </div>
+                        )}
+
+                        {f.type === 'date' && (
+                          <div className="mt-4">
+                            <input
+                              type="date"
+                              disabled
+                              className="w-full px-3 py-2 border border-slate-300 rounded-md bg-slate-50 text-sm"
+                            />
+                          </div>
+                        )}
+
+                        {f.type === 'time' && (
+                          <div className="mt-4">
+                            <input
+                              type="time"
+                              disabled
+                              className="w-full px-3 py-2 border border-slate-300 rounded-md bg-slate-50 text-sm"
+                            />
+                          </div>
+                        )}
+
+                        {(f.type === 'linear_scale' || f.type === 'rating') && (
+                          <div className="mt-4 text-sm text-muted-foreground">
+                            Scale configuration (1-5, 1-10, etc.)
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Field type selector */}
+                      <div className="shrink-0">
+                        <select
+                          value={f.type}
+                          onChange={(e) => {
+                            const newType = e.target.value
+                            const oldDefaultLabel = getDefaultLabel(f.type)
+                            const newDefaultLabel = getDefaultLabel(newType)
+                            const update: Partial<Field> = { type: newType }
+                            
+                            // If label is still the default (or empty), update it to new default
+                            if (f.label === oldDefaultLabel || f.label === '' || !f.label) {
+                              update.label = newDefaultLabel
+                            }
+                            
+                            // Initialize options for choice-based fields
+                            if (['multiple_choice', 'checkboxes', 'dropdown'].includes(newType) && !f.options) {
+                              update.options = [{ id: `opt_${Math.random().toString(36).slice(2, 9)}`, label: 'Option 1' }]
+                            }
+                            updateField(f.id, update)
+                          }}
+                          className="border border-slate-200 rounded-md px-3 py-1.5 text-sm bg-white hover:bg-slate-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {FIELD_TYPES.map((ft) => (
+                            <option key={ft.value} value={ft.value}>
+                              {ft.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
                     {selected === f.id && (
-                      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
-                        <div className="text-muted-foreground">Field</div>
+                      <div className="mt-4 pt-4 border-t flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
-                          <Button size="xs" variant="ghost" disabled={idx === 0} onClick={(e) => { e.stopPropagation(); moveField(idx, idx - 1) }}>↑</Button>
-                          <Button size="xs" variant="ghost" disabled={idx === fields.length - 1} onClick={(e) => { e.stopPropagation(); moveField(idx, idx + 1) }}>↓</Button>
-                          <Button size="xs" variant="ghost" onClick={(e) => { e.stopPropagation(); updateField(f.id, { required: !f.required }) }}>
-                            {f.required ? 'Required' : 'Optional'}
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="p-0"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              duplicateField(f.id)
+                            }}
+                            title="Duplicate"
+                          >
+                            <Copy className="w-4 h-4" />
                           </Button>
-                          <Button size="xs" variant="destructive" onClick={(e) => { e.stopPropagation(); deleteField(f.id) }} disabled={f.type === 'form_title'}>Delete</Button>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="p-0"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              deleteField(f.id)
+                            }}
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="h-6 w-px bg-slate-200" />
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <span className="text-muted-foreground">Required</span>
+                            <input
+                              type="checkbox"
+                              checked={f.required || false}
+                              onChange={(e) => {
+                                e.stopPropagation()
+                                updateField(f.id, { required: e.target.checked })
+                              }}
+                              className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                                before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                                checked:before:translate-x-5"
+                            />
+                          </label>
                         </div>
                       </div>
                     )}
