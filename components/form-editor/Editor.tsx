@@ -321,8 +321,43 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
                     }`}
                     onClick={() => setSelected(f.id)}
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="flex-1 space-y-3">
+                    <div className="flex flex-col gap-3">
+                      {/* Field type selector - only shown when selected */}
+                      {selected === f.id && (
+                        <div className="md:hidden">
+                          <select
+                            value={f.type}
+                            onChange={(e) => {
+                              const newType = e.target.value
+                              const oldDefaultLabel = getDefaultLabel(f.type)
+                              const newDefaultLabel = getDefaultLabel(newType)
+                              const update: Partial<Field> = { type: newType }
+                              
+                              // If label is still the default (or empty), update it to new default
+                              if (f.label === oldDefaultLabel || f.label === '' || !f.label) {
+                                update.label = newDefaultLabel
+                              }
+                              
+                              // Initialize options for choice-based fields
+                              if (['multiple_choice', 'checkboxes', 'dropdown'].includes(newType) && !f.options) {
+                                update.options = [{ id: `opt_${Math.random().toString(36).slice(2, 9)}`, label: 'Option 1' }]
+                              }
+                              updateField(f.id, update)
+                            }}
+                            className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm bg-white hover:bg-slate-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {FIELD_TYPES.map((ft) => (
+                              <option key={ft.value} value={ft.value}>
+                                {ft.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 space-y-3">
                         {/* Title with red asterisk if required */}
                         <div className="flex items-start gap-2">
                           <Input
@@ -510,38 +545,41 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
                         )}
                       </div>
 
-                      {/* Field type selector */}
-                      <div className="shrink-0">
-                        <select
-                          value={f.type}
-                          onChange={(e) => {
-                            const newType = e.target.value
-                            const oldDefaultLabel = getDefaultLabel(f.type)
-                            const newDefaultLabel = getDefaultLabel(newType)
-                            const update: Partial<Field> = { type: newType }
-                            
-                            // If label is still the default (or empty), update it to new default
-                            if (f.label === oldDefaultLabel || f.label === '' || !f.label) {
-                              update.label = newDefaultLabel
-                            }
-                            
-                            // Initialize options for choice-based fields
-                            if (['multiple_choice', 'checkboxes', 'dropdown'].includes(newType) && !f.options) {
-                              update.options = [{ id: `opt_${Math.random().toString(36).slice(2, 9)}`, label: 'Option 1' }]
-                            }
-                            updateField(f.id, update)
-                          }}
-                          className="border border-slate-200 rounded-md px-3 py-1.5 text-sm bg-white hover:bg-slate-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {FIELD_TYPES.map((ft) => (
-                            <option key={ft.value} value={ft.value}>
-                              {ft.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      {/* Field type selector - desktop (right side) */}
+                      {selected === f.id && (
+                        <div className="hidden md:block shrink-0">
+                          <select
+                            value={f.type}
+                            onChange={(e) => {
+                              const newType = e.target.value
+                              const oldDefaultLabel = getDefaultLabel(f.type)
+                              const newDefaultLabel = getDefaultLabel(newType)
+                              const update: Partial<Field> = { type: newType }
+                              
+                              // If label is still the default (or empty), update it to new default
+                              if (f.label === oldDefaultLabel || f.label === '' || !f.label) {
+                                update.label = newDefaultLabel
+                              }
+                              
+                              // Initialize options for choice-based fields
+                              if (['multiple_choice', 'checkboxes', 'dropdown'].includes(newType) && !f.options) {
+                                update.options = [{ id: `opt_${Math.random().toString(36).slice(2, 9)}`, label: 'Option 1' }]
+                              }
+                              updateField(f.id, update)
+                            }}
+                            className="border border-slate-200 rounded-md px-3 py-1.5 text-sm bg-white hover:bg-slate-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {FIELD_TYPES.map((ft) => (
+                              <option key={ft.value} value={ft.value}>
+                                {ft.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
+                  </div>
 
                     {selected === f.id && (
                       <div className="mt-4 pt-4 border-t flex flex-wrap items-center justify-between gap-3">
