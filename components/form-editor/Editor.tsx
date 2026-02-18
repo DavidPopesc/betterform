@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 
 import { CirclePlus, Import, CaseSensitive, Image, GalleryVertical } from 'lucide-react'
+import InspectorButtons from './InspectorButtons'
 type Field = {
   id: string
   type: string
@@ -202,6 +203,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
             {fields.length === 0 ? (
               <div className="text-sm text-muted-foreground py-8 text-center">
                 No fields yet — add one from the left to get started.
+                <InspectorButtons onAdd={addField} className="justify-center mt-4" />
               </div>
             ) : (
               <div className="space-y-3">
@@ -265,13 +267,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
                     {selected === f.id && (
                       <div className="mt-3 md:hidden">
                         <Card className="p-2 w-full">
-                          <div className="flex gap-3 items-center justify-center">
-                            <Button variant="outline" size="icon-sm" className="p-0" onClick={() => addField('multiple_choice')}> <CirclePlus /> </Button>
-                            <Button variant="outline" size="icon-sm" className="p-0"> <Import /> </Button>
-                            <Button variant="outline" size="icon-sm" className="p-0" onClick={() => addField('short_text')}> <CaseSensitive /> </Button>
-                            <Button variant="outline" size="icon-sm" className="p-0"> <Image /> </Button>
-                            <Button variant="outline" size="icon-sm" className="p-0"> <GalleryVertical /> </Button>
-                          </div>
+                            <InspectorButtons onAdd={addField} />
                         </Card>
                       </div>
                     )}
@@ -304,13 +300,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
           style={{ position: 'fixed', top: inspectorPos.top, left: inspectorPos.left, zIndex: 60 }}
         >
           <Card className="p-2 w-16">
-            <div className="flex flex-col gap-3 items-center">
-              <Button variant="outline" size="icon-sm" className="p-0" onClick={() => addField('multiple_choice')}> <CirclePlus /> </Button>
-              <Button variant="outline" size="icon-sm" className="p-0"> <Import /> </Button>
-              <Button variant="outline" size="icon-sm" className="p-0" onClick={() => addField('short_text')}> <CaseSensitive /> </Button>
-              <Button variant="outline" size="icon-sm" className="p-0"> <Image /> </Button>
-              <Button variant="outline" size="icon-sm" className="p-0"> <GalleryVertical /> </Button>
-            </div>
+            <InspectorButtons onAdd={addField} vertical />
           </Card>
         </div>
       )}
