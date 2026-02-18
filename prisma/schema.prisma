@@ -68,6 +68,10 @@ model Form {
   // full schema for the form (Values.json-like structure)
   schema    Json
 
+  // API integration settings
+  apiEnabled Boolean @default(false)
+  apiKey     String? @unique // hashed API key for webhook/integration access
+
   // optional normalized field rows for queries / admin tooling
   fields    FormField[]
   responses Response[]

@@ -754,9 +754,9 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
         </div>
       )}
 
-      {activeTab === 'responses' && <ResponsesTab />}
+      {activeTab === 'responses' && <ResponsesTab formId={formId} fields={fields} />}
       {activeTab === 'send' && <SendTab publicId={publicId} formName={formName} />}
-      {activeTab === 'settings' && <SettingsTab />}
+      {activeTab === 'settings' && <SettingsTab formId={formId} />}
 
       <ImportModal
         isOpen={showImportModal}
