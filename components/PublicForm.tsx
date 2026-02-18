@@ -159,6 +159,28 @@ export default function PublicForm({ publicId, formName, fields }: PublicFormPro
           />
         )
 
+      case 'email':
+        return (
+          <Input
+            type="email"
+            value={value}
+            onChange={(e) => handleInputChange(field.id, e.target.value)}
+            placeholder="your.email@example.com"
+            required={field.required}
+          />
+        )
+
+      case 'phone':
+        return (
+          <Input
+            type="tel"
+            value={value}
+            onChange={(e) => handleInputChange(field.id, e.target.value)}
+            placeholder="+1 (555) 000-0000"
+            required={field.required}
+          />
+        )
+
       case 'multiple_choice':
         return (
           <div className="space-y-2">

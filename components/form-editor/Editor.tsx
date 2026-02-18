@@ -30,6 +30,8 @@ export type Field = {
 export const FIELD_TYPES = [
   { value: 'short_text', label: 'Short answer' },
   { value: 'paragraph', label: 'Paragraph' },
+  { value: 'email', label: 'Email' },
+  { value: 'phone', label: 'Phone Number' },
   { value: 'multiple_choice', label: 'Multiple choice' },
   { value: 'checkboxes', label: 'Checkboxes' },
   { value: 'dropdown', label: 'Dropdown' },
@@ -45,6 +47,8 @@ export function getDefaultLabel(type: string): string {
   const fieldType = FIELD_TYPES.find(ft => ft.value === type)
   if (type === 'text') return 'Description text'
   if (type === 'section') return 'Section break'
+  if (type === 'email') return 'Email address'
+  if (type === 'phone') return 'Phone number'
   return fieldType ? `${fieldType.label} question` : ''
 }
 
@@ -550,6 +554,28 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
                           <div className="mt-4">
                             <Input
                               placeholder="Long answer text"
+                              disabled
+                              className="bg-transparent border-0 border-b rounded-none"
+                            />
+                          </div>
+                        )}
+
+                        {f.type === 'email' && (
+                          <div className="mt-4">
+                            <Input
+                              type="email"
+                              placeholder="user@example.com"
+                              disabled
+                              className="bg-transparent border-0 border-b rounded-none"
+                            />
+                          </div>
+                        )}
+
+                        {f.type === 'phone' && (
+                          <div className="mt-4">
+                            <Input
+                              type="tel"
+                              placeholder="+1 (555) 000-0000"
                               disabled
                               className="bg-transparent border-0 border-b rounded-none"
                             />

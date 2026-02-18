@@ -28,6 +28,7 @@ enum FieldType {
   file_upload
   number
   email
+  phone
   linear_scale
   rating
   date
@@ -68,13 +69,26 @@ model Form {
   // full schema for the form (Values.json-like structure)
   schema    Json
 
+  // Theme & customization
+  theme     String      @default("blue")
+
+  // Quiz mode settings
+  isQuiz    Boolean     @default(false)
+  showScore Boolean     @default(false)
+
+  // Response restrictions
+  responsesEnabled   Boolean     @default(true)
+  responseDeadline   DateTime?
+  oneResponsePerEmail Boolean    @default(false)
+
   // API integration settings
   apiEnabled Boolean @default(false)
-  apiKey     String? @unique // hashed API key for webhook/integration access
+  apiKey     String? @unique
 
   // optional normalized field rows for queries / admin tooling
   fields    FormField[]
   responses Response[]
+  emailVerifications EmailVerificationRecord[]
 
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
@@ -193,3 +207,30 @@ model AuthEvent {
   @@index([createdAt])
 }
 
+model FormAccountUUID {
+  id               String   @id @default(uuid())
+  createdAt        DateTime @default(now())
+  lastSeen         DateTime @updatedAt
+  ipAddresses      Json     @default("[]")
+  deviceMetrics    Json?
+  verifiedEmails   String[] @default([])
+  verifiedPhones   String[] @default([])
+  formsViewed      Json     @default("[]")
+  formsSubmitted   Json     @default("[]")
+}
+
+model EmailVerificationRecord {
+  id              String   @id @default(uuid())
+  formId          String
+  form            Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  email           String
+  formAccountId   String
+  tokenHash       String   @unique
+  verified        Boolean  @default(false)
+  verifiedAt      DateTime?
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
+  
+  @@index([formId, email])
+  @@index([formAccountId])
+}
