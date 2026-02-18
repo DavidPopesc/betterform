@@ -1,0 +1,75 @@
+"use client"
+
+import Image from 'next/image'
+import Link from 'next/link'
+import * as React from 'react'
+
+export type Tab = 'questions' | 'responses' | 'send' | 'settings'
+
+interface TopBarProps {
+  title?: string
+  activeTab?: Tab
+  onTabChange?: (tab: Tab) => void
+  isSaving?: boolean
+  lastSavedAt?: Date | null
+  isDirty?: boolean
+}
+
+export default function TopBar({
+  title = 'Better Form',
+  activeTab = 'questions',
+  onTabChange,
+  isSaving = false,
+  lastSavedAt = null,
+  isDirty = false,
+}: TopBarProps) {
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'questions', label: 'Questions' },
+    { id: 'responses', label: 'Responses' },
+    { id: 'send', label: 'Send' },
+    { id: 'settings', label: 'Settings' },
+  ]
+
+  return (
+    <header className="sticky top-0 z-50 bg-white border-b">
+      <div className="max-w-6xl mx-auto px-4">
+        <div className="flex items-center justify-between py-3">
+          <div className="flex items-center gap-4">
+            <Link href="/dashboard" className="inline-flex items-center gap-4">
+              <Image src="/betterformlogo.png" width={40} height={40} alt="Better Form logo" />
+              <span className="text-2xl font-semibold">{title}</span>
+            </Link>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <nav className="flex gap-4">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => onTabChange?.(tab.id)}
+                  className={`pb-2 px-2 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === tab.id
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+
+            <div className="text-sm text-muted-foreground">
+              {isSaving
+                ? 'Saving…'
+                : lastSavedAt
+                ? `Saved ${lastSavedAt.toLocaleTimeString()}`
+                : isDirty
+                ? 'Unsaved changes'
+                : 'All changes saved'}
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+  )
+}

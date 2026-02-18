@@ -1,80 +1,82 @@
-"use client"
+"use client";
 
-import * as React from 'react'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Copy, Download, Code, Mail, Share2, CheckCheck } from 'lucide-react'
+import * as React from "react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Copy, Download, Code, Mail, Share2, CheckCheck } from "lucide-react";
 
 interface SendTabProps {
-  publicId: string
-  formName: string
+  publicId: string;
+  formName: string;
 }
 
 export default function SendTab({ publicId, formName }: SendTabProps) {
-  const [copied, setCopied] = React.useState(false)
-  const [embedCopied, setEmbedCopied] = React.useState(false)
-  
-  const formUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/f/${publicId}`
-  const embedCode = `<iframe src="${formUrl}" width="100%" height="600" frameborder="0"></iframe>`
-  const qrImageUrl = `/api/qr?data=${encodeURIComponent(formUrl)}`
-  const safeFormName = (formName || 'Untitled form').trim().replace(/[\\/:*?"<>|]+/g, '-')
-  const qrFileName = `${safeFormName}-Better Form.png`
+  const [copied, setCopied] = React.useState(false);
+  const [embedCopied, setEmbedCopied] = React.useState(false);
+
+  const formUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/f/${publicId}`;
+  const embedCode = `<iframe src="${formUrl}" width="100%" height="600" frameborder="0"></iframe>`;
+  const qrImageUrl = `/api/qr?data=${encodeURIComponent(formUrl)}`;
+  const safeFormName = (formName || "Untitled form")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-");
+  const qrFileName = `${safeFormName}-Better Form.png`;
 
   const copyLink = () => {
-    navigator.clipboard.writeText(formUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+    navigator.clipboard.writeText(formUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const copyEmbedCode = () => {
-    navigator.clipboard.writeText(embedCode)
-    setEmbedCopied(true)
-    setTimeout(() => setEmbedCopied(false), 2000)
-  }
+    navigator.clipboard.writeText(embedCode);
+    setEmbedCopied(true);
+    setTimeout(() => setEmbedCopied(false), 2000);
+  };
 
   const downloadQR = async () => {
     // Generate QR code using our server-side API with logo
     try {
-      const response = await fetch(qrImageUrl)
-      if (!response.ok) throw new Error('QR generation failed')
-      
-      const blob = await response.blob()
-      const blobUrl = URL.createObjectURL(blob)
-      
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.download = qrFileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      
+      const response = await fetch(qrImageUrl);
+      if (!response.ok) throw new Error("QR generation failed");
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = qrFileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
       // Clean up blob URL
-      URL.revokeObjectURL(blobUrl)
+      URL.revokeObjectURL(blobUrl);
     } catch (error) {
-      console.error('Failed to download QR code:', error)
+      console.error("Failed to download QR code:", error);
     }
-  }
+  };
 
   const shareViaEmail = () => {
-    const subject = encodeURIComponent('Fill out this form')
-    const body = encodeURIComponent(`Please fill out this form: ${formUrl}`)
-    window.location.href = `mailto:?subject=${subject}&body=${body}`
-  }
+    const subject = encodeURIComponent("Fill out this form");
+    const body = encodeURIComponent(`Please fill out this form: ${formUrl}`);
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  };
 
   const shareNative = async () => {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'Form',
-          text: 'Please fill out this form',
+          title: "Form",
+          text: "Please fill out this form",
           url: formUrl,
-        })
+        });
       } catch {
-        console.log('Share cancelled')
+        console.log("Share cancelled");
       }
     }
-  }
+  };
 
   return (
     <div className="max-w-4xl w-full mx-auto px-4 py-8">
@@ -103,7 +105,10 @@ export default function SendTab({ publicId, formName }: SendTabProps) {
                   readOnly
                   className="flex-1 font-mono text-sm"
                 />
-                <Button onClick={copyLink} variant={copied ? "default" : "outline"}>
+                <Button
+                  onClick={copyLink}
+                  variant={copied ? "default" : "outline"}
+                >
                   {copied ? (
                     <>
                       <CheckCheck className="w-4 h-4 mr-2" />
@@ -133,18 +138,20 @@ export default function SendTab({ publicId, formName }: SendTabProps) {
                 Download a QR code for print materials, posters, or flyers
               </p>
               <div className="flex flex-col md:flex-row items-center gap-4">
-                <div className="bg-white p-4 rounded-lg border-2 border-gray-200">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img 
-                    src={qrImageUrl} 
-                    alt="QR Code" 
-                    className="w-48 h-48"
-                  />
+                <div className="flex flex-col items-center gap-4">
+                  <div className="bg-white p-4 rounded-lg border-2 border-gray-200">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={qrImageUrl} alt="QR Code" className="w-48 h-48" />
+                  </div>
+                  <Button
+                    onClick={downloadQR}
+                    variant="outline"
+                    className="md:self-start"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download QR Code
+                  </Button>
                 </div>
-                <Button onClick={downloadQR} variant="outline" className="md:self-start">
-                  <Download className="w-4 h-4 mr-2" />
-                  Download QR Code
-                </Button>
               </div>
             </div>
           </div>
@@ -165,7 +172,10 @@ export default function SendTab({ publicId, formName }: SendTabProps) {
                 <div className="bg-slate-900 text-slate-100 p-4 rounded-md font-mono text-sm overflow-x-auto">
                   {embedCode}
                 </div>
-                <Button onClick={copyEmbedCode} variant={embedCopied ? "default" : "outline"}>
+                <Button
+                  onClick={copyEmbedCode}
+                  variant={embedCopied ? "default" : "outline"}
+                >
                   {embedCopied ? (
                     <>
                       <CheckCheck className="w-4 h-4 mr-2" />
@@ -199,7 +209,7 @@ export default function SendTab({ publicId, formName }: SendTabProps) {
                   <Mail className="w-4 h-4 mr-2" />
                   Share via Email
                 </Button>
-                {typeof window !== 'undefined' && 'share' in navigator && (
+                {typeof window !== "undefined" && "share" in navigator && (
                   <Button onClick={shareNative} variant="outline">
                     <Share2 className="w-4 h-4 mr-2" />
                     Share
@@ -211,5 +221,5 @@ export default function SendTab({ publicId, formName }: SendTabProps) {
         </Card>
       </div>
     </div>
-  )
+  );
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from 'react'
-import FormEditorHeader, { type Tab } from './FormEditorHeader'
+import TopBar, { type Tab } from './TopBar'
 import ResponsesTab from './tabs/ResponsesTab'
 import SendTab from './tabs/SendTab'
 import SettingsTab from './tabs/SettingsTab'
@@ -252,7 +252,7 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
 
   return (
     <>
-      <FormEditorHeader
+      <TopBar
         activeTab={activeTab}
         onTabChange={setActiveTab}
         isSaving={isSaving}
