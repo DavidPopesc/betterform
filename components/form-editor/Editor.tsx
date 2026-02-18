@@ -23,6 +23,7 @@ export type Field = {
   label: string
   description?: string
   required?: boolean
+  requireVerifiedEmail?: boolean
   order?: number
   options?: FieldOption[]
   points?: number
@@ -904,6 +905,22 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                                     checked:before:translate-x-5"
                                 />
                               </label>
+                              {f.type === 'email' && (
+                                <label className="flex items-center gap-2 text-sm cursor-pointer" title="Require users to verify their email address">
+                                  <span className="text-muted-foreground">Verify email</span>
+                                  <input
+                                    type="checkbox"
+                                    checked={(f as { requireVerifiedEmail?: boolean }).requireVerifiedEmail || false}
+                                    onChange={(e) => {
+                                      e.stopPropagation()
+                                      updateField(f.id, { requireVerifiedEmail: e.target.checked })
+                                    }}
+                                    className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                                      before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                                      checked:before:translate-x-5"
+                                  />
+                                </label>
+                              )}
                               {isQuiz && !['text', 'section', 'email', 'phone'].includes(f.type) && (
                                 <label className="flex items-center gap-2 text-sm">
                                   <span className="text-muted-foreground">Points</span>

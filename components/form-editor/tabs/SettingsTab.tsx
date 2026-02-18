@@ -28,6 +28,8 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [responsesEnabled, setResponsesEnabled] = useState(true)
   const [responseDeadline, setResponseDeadline] = useState<string>('')
+  const [oneResponsePerEmail, setOneResponsePerEmail] = useState(false)
+  const [oneResponsePerUser, setOneResponsePerUser] = useState(false)
   const [successMessage, setSuccessMessage] = useState('Your response has been recorded.')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -46,6 +48,8 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         setApiKey(data.apiKey || null)
         setResponsesEnabled(data.responsesEnabled !== undefined ? data.responsesEnabled : true)
         setResponseDeadline(data.responseDeadline ? new Date(data.responseDeadline).toISOString().slice(0, 16) : '')
+        setOneResponsePerEmail(data.oneResponsePerEmail || false)
+        setOneResponsePerUser(data.oneResponsePerUser || false)
         setSuccessMessage(data.successMessage || 'Your response has been recorded.')
       }
     } catch (err) {
@@ -218,6 +222,40 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     }
   }
 
+  async function toggleOneResponsePerEmail() {
+    const newValue = !oneResponsePerEmail
+    setOneResponsePerEmail(newValue)
+    setSaving(true)
+    try {
+      await fetch(`/api/forms/${formId}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oneResponsePerEmail: newValue }),
+      })
+    } catch (err) {
+      console.error('Failed to update oneResponsePerEmail:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function toggleOneResponsePerUser() {
+    const newValue = !oneResponsePerUser
+    setOneResponsePerUser(newValue)
+    setSaving(true)
+    try {
+      await fetch(`/api/forms/${formId}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oneResponsePerUser: newValue }),
+      })
+    } catch (err) {
+      console.error('Failed to update oneResponsePerUser:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function updateSuccessMessage(value: string) {
     if (value.length > 500) return
     setSuccessMessage(value)
@@ -326,17 +364,49 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
             </div>
 
             {responsesEnabled && (
-              <div>
-                <label className="text-sm text-muted-foreground block mb-2">Response deadline (optional)</label>
-                <input
-                  type="datetime-local"
-                  value={responseDeadline}
-                  onChange={(e) => updateResponseDeadline(e.target.value)}
-                  disabled={saving}
-                  className="w-full max-w-sm border border-slate-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-                />
-                <p className="text-xs text-muted-foreground mt-1">Forms will automatically stop accepting responses after this time</p>
-              </div>
+              <>
+                <div>
+                  <label className="text-sm text-muted-foreground block mb-2">Response deadline (optional)</label>
+                  <input
+                    type="datetime-local"
+                    value={responseDeadline}
+                    onChange={(e) => updateResponseDeadline(e.target.value)}
+                    disabled={saving}
+                    className="w-full max-w-sm border border-slate-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Forms will automatically stop accepting responses after this time</p>
+                </div>
+
+                <div className="flex flex-col gap-3 pt-2">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <span className="text-muted-foreground">Limit to one response per email</span>
+                    <input
+                      type="checkbox"
+                      checked={oneResponsePerEmail}
+                      onChange={toggleOneResponsePerEmail}
+                      disabled={saving}
+                      className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                        before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                        checked:before:translate-x-5 disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                  </label>
+                  <p className="text-xs text-muted-foreground -mt-2">Prevent the same email address from submitting multiple times</p>
+
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <span className="text-muted-foreground">Limit to one response per user</span>
+                    <input
+                      type="checkbox"
+                      checked={oneResponsePerUser}
+                      onChange={toggleOneResponsePerUser}
+                      disabled={saving}
+                      className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                        before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                        checked:before:translate-x-5 disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                  </label>
+                  <p className="text-xs text-muted-foreground -mt-2">Prevent the same user/device from submitting multiple times, even with different emails</p>
+                </div>
+              </>
             )}
           </div>
         </Card>
@@ -413,7 +483,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
               <div className="bg-slate-50 p-4 rounded text-sm">
                 <p className="font-medium mb-2">API Endpoint</p>
                 <code className="text-xs bg-white px-2 py-1 rounded block mb-3">
-                  POST /api/forms/{formId}/webhook
+                  POST https://betterform.dev/api/forms/{formId}/webhook
                 </code>
                 <p className="text-muted-foreground text-xs">
                   Include the API key in the Authorization header: <code className="bg-white px-1">Bearer {'{'}your-api-key{'}'}</code>

@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Lock } from 'lucide-react'
+import { Lock, Mail, Check, X } from 'lucide-react'
 
 interface Field {
   id: string
@@ -13,6 +13,7 @@ interface Field {
   label: string
   description?: string
   required?: boolean
+  requireVerifiedEmail?: boolean
   options?: Array<{ id: string; label: string }>
   points?: number
   correctAnswer?: string | string[]
@@ -75,6 +76,41 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
   const [submitted, setSubmitted] = useState(false)
   const [score, setScore] = useState<{ earned: number; total: number } | null>(null)
   const [error, setError] = useState('')
+
+  // Email verification states
+  const [verifiedEmails, setVerifiedEmails] = useState<string[]>([])
+  const [verificationSending, setVerificationSending] = useState(false)
+  const [verificationSent, setVerificationSent] = useState<Record<string, boolean>>({})
+  const [newEmailInput, setNewEmailInput] = useState<Record<string, string>>({})
+
+  // Check if any field requires verified email
+  const hasVerifiedEmailField = fields.some(f => f.type === 'email' && f.requireVerifiedEmail)
+
+  // Fetch verified emails on mount if needed
+  useEffect(() => {
+    if (hasVerifiedEmailField) {
+      fetch('/api/verify-email/account')
+        .then(res => res.json())
+        .then(data => {
+          if (data.verifiedEmails) {
+            setVerifiedEmails(data.verifiedEmails)
+          }
+        })
+        .catch(console.error)
+    }
+  }, [hasVerifiedEmailField])
+
+  // Listen for verification messages from popup
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'email-verified' && event.data.email) {
+        setVerifiedEmails(prev => [...prev, event.data.email])
+        setVerificationSent(prev => ({ ...prev, [event.data.email]: false }))
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [])
 
   // Filter out section fields for navigation
   const sections = fields.filter(f => f.type === 'section')
@@ -261,6 +297,124 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
         )
 
       case 'email':
+        if (field.requireVerifiedEmail) {
+          const currentEmail = value as string
+          const isCurrentVerified = verifiedEmails.some(e => e.toLowerCase().trim() === currentEmail.toLowerCase().trim())
+          const wasSent = verificationSent[currentEmail]
+
+          const sendVerification = async (email: string) => {
+            if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+              setError('Please enter a valid email address')
+              return
+            }
+
+            setVerificationSending(true)
+            try {
+              const formIdResponse = await fetch(`/api/forms/public/${publicId}`)
+              const formData = await formIdResponse.json()
+              
+              const res = await fetch('/api/verify-email/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, formId: formData.formId }),
+              })
+
+              const data = await res.json()
+              if (data.success) {
+                if (data.alreadyVerified) {
+                  setVerifiedEmails(prev => [...new Set([...prev, email])])
+                } else {
+                  setVerificationSent(prev => ({ ...prev, [email]: true }))
+                }
+                setError('')
+              } else {
+                setError(data.error || 'Failed to send verification email')
+              }
+            } catch {
+              setError('Failed to send verification email')
+            } finally {
+              setVerificationSending(false)
+            }
+          }
+
+          return (
+            <div className="space-y-3">
+              {verifiedEmails.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Select a verified email:</p>
+                  {verifiedEmails.map((email) => (
+                    <label key={email} className="flex items-center gap-3 p-3 border border-slate-200 rounded-md cursor-pointer hover:bg-slate-50">
+                      <input
+                        type="radio"
+                        name={`email-select-${field.id}`}
+                        value={email}
+                        checked={currentEmail === email}
+                        onChange={() => handleInputChange(field.id, email)}
+                        className="w-4 h-4"
+                      />
+                      <Check className="w-4 h-4 text-green-600" />
+                      <span>{email}</span>
+                    </label>
+                  ))}
+                  <p className="text-sm text-muted-foreground mt-2">Or add a new email:</p>
+                </div>
+              )}
+              
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Input
+                    type="email"
+                    value={newEmailInput[field.id] || currentEmail || ''}
+                    onChange={(e) => {
+                      const email = e.target.value
+                      setNewEmailInput(prev => ({ ...prev, [field.id]: email }))
+                      handleInputChange(field.id, email)
+                    }}
+                    placeholder="your.email@example.com"
+                    required={field.required}
+                  />
+                  {currentEmail && !isCurrentVerified && !wasSent && (
+                    <Button
+                      type="button"
+                      onClick={() => sendVerification(currentEmail)}
+                      disabled={verificationSending}
+                      variant="outline"
+                      className="flex items-center gap-2"
+                    >
+                      <Mail className="w-4 h-4" />
+                      {verificationSending ? 'Sending...' : 'Verify'}
+                    </Button>
+                  )}
+                </div>
+                
+                {isCurrentVerified && currentEmail && (
+                  <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded-md">
+                    <Check className="w-4 h-4" />
+                    <span>Email verified</span>
+                  </div>
+                )}
+                
+                {!isCurrentVerified && currentEmail && wasSent && (
+                  <div className="text-sm text-amber-600 bg-amber-50 p-2 rounded-md">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Mail className="w-4 h-4" />
+                      <span className="font-medium">Verification email sent</span>
+                    </div>
+                    <p className="text-xs">Check your inbox and click the verification link. The page will update automatically.</p>
+                  </div>
+                )}
+                
+                {field.required && !isCurrentVerified && currentEmail && (
+                  <div className="flex items-center gap-2 text-sm text-amber-600">
+                    <X className="w-4 h-4" />
+                    <span>Email must be verified before submitting</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        }
+        
         return (
           <Input
             type="email"

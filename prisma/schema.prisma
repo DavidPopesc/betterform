@@ -83,6 +83,7 @@ model Form {
   responsesEnabled   Boolean     @default(true)
   responseDeadline   DateTime?
   oneResponsePerEmail Boolean    @default(false)
+  oneResponsePerUser  Boolean    @default(false)
 
   // API integration settings
   apiEnabled Boolean @default(false)
@@ -124,6 +125,7 @@ model Response {
   respondentIp   String?     // store as string; consider hashing before persist
   respondentHash String?     // app-level hashed identifier (HMAC)
   respondentEmail String?    // for quick lookup/indexing
+  formAccountId  String?     // tracks which form account submitted this
 
   processed      Boolean     @default(false)
   attachments    Attachment[]

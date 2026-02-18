@@ -29,6 +29,8 @@ export async function GET(
         successMessage: true,
         responsesEnabled: true,
         responseDeadline: true,
+        oneResponsePerEmail: true,
+        oneResponsePerUser: true,
       }
     })
     
@@ -45,6 +47,8 @@ export async function GET(
       successMessage: form.successMessage,
       responsesEnabled: form.responsesEnabled,
       responseDeadline: form.responseDeadline,
+      oneResponsePerEmail: form.oneResponsePerEmail,
+      oneResponsePerUser: form.oneResponsePerUser,
     })
   } catch (err) {
     console.error('Fetch settings error:', err)
@@ -69,7 +73,19 @@ export async function POST(
     // Verify form ownership
     const form = await prisma.form.findUnique({ 
       where: { id: formId },
-      select: { accountId: true, apiEnabled: true, apiKey: true, theme: true, isQuiz: true, showScore: true, successMessage: true, responsesEnabled: true, responseDeadline: true }
+      select: { 
+        accountId: true, 
+        apiEnabled: true, 
+        apiKey: true, 
+        theme: true, 
+        isQuiz: true, 
+        showScore: true, 
+        successMessage: true, 
+        responsesEnabled: true, 
+        responseDeadline: true,
+        oneResponsePerEmail: true,
+        oneResponsePerUser: true,
+      }
     })
     
     if (!form || form.accountId !== user.id) {
@@ -184,6 +200,30 @@ export async function POST(
       })
       
       return NextResponse.json({ responseDeadline })
+    }
+
+    // Handle one response per email toggle
+    if (body.oneResponsePerEmail !== undefined) {
+      const oneResponsePerEmail = Boolean(body.oneResponsePerEmail)
+      
+      await prisma.form.update({
+        where: { id: formId },
+        data: { oneResponsePerEmail },
+      })
+      
+      return NextResponse.json({ oneResponsePerEmail })
+    }
+
+    // Handle one response per user toggle
+    if (body.oneResponsePerUser !== undefined) {
+      const oneResponsePerUser = Boolean(body.oneResponsePerUser)
+      
+      await prisma.form.update({
+        where: { id: formId },
+        data: { oneResponsePerUser },
+      })
+      
+      return NextResponse.json({ oneResponsePerUser })
     }
 
     return NextResponse.json({ error: 'invalid_request' }, { status: 400 })
