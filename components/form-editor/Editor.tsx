@@ -21,34 +21,34 @@ interface EditorProps {
 
 export default function Editor({ formId, initialSchema }: EditorProps) {
   const [fields, setFields] = React.useState<Field[]>(initialSchema.fields ?? [])
-  // ensure the form always has a title field at index 0 which cannot be deleted
-  function ensureHasTitle(arr: Field[]) {
-    const hasTitle = arr.some((f) => f.type === 'form_title')
-    if (hasTitle) return arr
-    const titleId = `field_title`
-    const titleField: Field = { id: titleId, type: 'form_title', label: initialSchema?.title ?? 'Untitled form', order: 0 }
-    return [titleField, ...arr.map((f, i) => ({ ...f, order: i + 1 }))]
-  }
-
-  const [selected, setSelected] = React.useState<string | null>(ensureHasTitle(fields)[0]?.id ?? null)
+  // form name (stored in DB `name`), and fields (schema) stored separately
+  const [formName, setFormName] = React.useState<string>(initialSchema?.name ?? initialSchema?.title ?? 'Untitled form')
+  const [selected, setSelected] = React.useState<string | null>(fields[0]?.id ?? null)
   const [isSaving, setIsSaving] = React.useState(false)
   const [isDirty, setIsDirty] = React.useState(false)
   const [lastSavedAt, setLastSavedAt] = React.useState<Date | null>(null)
 
   React.useEffect(() => {
-    setFields(ensureHasTitle(initialSchema.fields ?? []))
-    setSelected(ensureHasTitle(initialSchema.fields ?? [])[0]?.id ?? null)
+    // load fields but strip any legacy `form_title` entries from stored schema
+    const loaded = (initialSchema.fields ?? []).filter((f: Field) => f.type !== 'form_title')
+    setFields(loaded.map((f: Field, i: number) => ({ ...f, order: i })))
+    setFormName(initialSchema?.name ?? initialSchema?.title ?? 'Untitled form')
+    setSelected((loaded[0]?.id) ?? null)
   }, [initialSchema])
 
   function addField(type: string) {
     const id = `field_${Math.random().toString(36).slice(2, 9)}`
-    const f: Field = {
-      id,
-      type,
-      label: `New ${type.replace(/_/g, ' ')}`,
-      order: fields.length,
-    }
-    setFields((s) => [...s, f])
+    const f: Field = { id, type, label: `New ${type.replace(/_/g, ' ')}` }
+    setFields((s) => {
+      // insert after selected field; if nothing selected, append at end
+      const found = s.findIndex((x) => x.id === selected)
+      const insertAt = found === -1 ? s.length : found + 1
+      const next = [...s]
+      next.splice(insertAt, 0, { ...f })
+      // recompute orders
+      const withOrder = next.map((it, i) => ({ ...it, order: i }))
+      return withOrder
+    })
     setSelected(id)
     setIsDirty(true)
   }
@@ -56,8 +56,6 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
   function deleteField(id: string) {
     const toDelete = fields.find((f) => f.id === id)
     if (!toDelete) return
-    // prevent deleting the form title
-    if (toDelete.type === 'form_title') return
     setFields((s) => s.filter((f) => f.id !== id))
     if (selected === id) {
       setSelected(fields.length > 1 ? fields[0].id : null)
@@ -85,7 +83,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
       const res = await fetch(`/api/forms/${formId}/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schema: { fields } }),
+        body: JSON.stringify({ name: formName, schema: { fields } }),
       })
       if (!res.ok) throw new Error('save-failed')
       // mark saved
@@ -126,6 +124,45 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
 
   const selectedField = fields.find((f) => f.id === selected) ?? null
   const selectedIndex = fields.findIndex((f) => f.id === selected)
+  const inspectorRef = React.useRef<HTMLDivElement | null>(null)
+  const [inspectorPos, setInspectorPos] = React.useState<{ top: number; left: number; visible: boolean }>({ top: 0, left: 0, visible: false })
+
+  React.useEffect(() => {
+    function updatePos() {
+      if (!selected) {
+        setInspectorPos((s) => ({ ...s, visible: false }))
+        return
+      }
+      const fieldEl = document.getElementById(`field-${selected}`)
+      const inspectorEl = inspectorRef.current
+      if (!fieldEl || !inspectorEl) {
+        setInspectorPos((s) => ({ ...s, visible: false }))
+        return
+      }
+      const fieldRect = fieldEl.getBoundingClientRect()
+      const inspRect = inspectorEl.getBoundingClientRect()
+      const margin = 12
+      // prefer right side
+      let left = fieldRect.right + margin
+      let top = fieldRect.top + window.scrollY + fieldRect.height / 2 - inspRect.height / 2
+      // if it overflows right edge, place on left
+      if (left + inspRect.width > window.innerWidth - margin) {
+        left = Math.max(margin, fieldRect.left - margin - inspRect.width)
+      }
+      // clamp vertically
+      const minTop = window.scrollY + margin
+      const maxTop = window.scrollY + window.innerHeight - inspRect.height - margin
+      top = Math.min(Math.max(top, minTop), maxTop)
+      setInspectorPos({ top, left, visible: true })
+    }
+    updatePos()
+    window.addEventListener('resize', updatePos)
+    window.addEventListener('scroll', updatePos)
+    return () => {
+      window.removeEventListener('resize', updatePos)
+      window.removeEventListener('scroll', updatePos)
+    }
+  }, [selected, fields])
 
   return (
     <div className="max-w-6xl w-full mx-auto px-4 flex flex-col gap-4">
@@ -168,6 +205,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
                 Date
               </Button>
             </div>
+
           </Card>
         </aside> */}
 
@@ -175,6 +213,19 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
         <div className="col-span-12">
           <Card className="p-6 w-full max-w-3xl mx-auto">
             <div className="font-semibold mb-4">Form preview</div>
+
+            <div className="mb-4">
+              <Input
+                value={formName}
+                onChange={(e) => {
+                  setFormName(e.target.value)
+                  setIsDirty(true)
+                }}
+                placeholder="Form title"
+                className="text-2xl font-semibold"
+              />
+            </div>
+
             {fields.length === 0 ? (
               <div className="text-sm text-muted-foreground py-8 text-center">
                 No fields yet — add one from the left to get started.
@@ -182,8 +233,32 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
             ) : (
               <div className="space-y-3">
                 {fields.map((f, idx) => (
-                  <div
+                  <div id={`field-${f.id}`}
                     key={f.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('text/plain', String(idx))
+                      e.dataTransfer.effectAllowed = 'move'
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      const from = Number(e.dataTransfer.getData('text/plain'))
+                      const to = idx
+                      if (Number.isNaN(from)) return
+                      if (from === to) return
+                      setFields((s) => {
+                        const next = [...s]
+                        const [moved] = next.splice(from, 1)
+                        let insertAt = to
+                        if (from < to) insertAt = to
+                        next.splice(insertAt, 0, moved)
+                        const withOrder = next.map((it, i) => ({ ...it, order: i }))
+                        // select moved field
+                        setSelected(moved.id)
+                        return withOrder
+                      })
+                    }}
                     className={`relative p-4 border-2 rounded-md cursor-pointer transition-all overflow-visible ${
                       selected === f.id
                         ? 'border-primary bg-primary/5 shadow-sm md:py-6'
@@ -215,31 +290,17 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
 
                     {/* Contextual inspector shown for selected field */}
                     {selected === f.id && (
-                      <>
-                        <div className="absolute top-1/2 left-full ml-8 -translate-y-1/2 hidden md:block">
-                          <Card className="p-2 w-16">
-                            <div className="flex flex-col gap-3 items-center">
-                              <Button variant="outline" size="icon-sm" className="p-0"> <CirclePlus /> </Button>
-                              <Button variant="outline" size="icon-sm" className="p-0"> <Import /> </Button>
-                              <Button variant="outline" size="icon-sm" className="p-0"> <CaseSensitive /> </Button>
-                              <Button variant="outline" size="icon-sm" className="p-0"> <Image /> </Button>
-                              <Button variant="outline" size="icon-sm" className="p-0"> <GalleryVertical /> </Button>
-                            </div>
-                          </Card>
-                        </div>
-
-                        <div className="mt-3 md:hidden">
-                          <Card className="p-2 w-full">
-                            <div className="flex gap-3 items-center justify-center">
-                              <Button variant="outline" size="icon-sm" className="p-0"> <CirclePlus /> </Button>
-                              <Button variant="outline" size="icon-sm" className="p-0"> <Import /> </Button>
-                              <Button variant="outline" size="icon-sm" className="p-0"> <CaseSensitive /> </Button>
-                              <Button variant="outline" size="icon-sm" className="p-0"> <Image /> </Button>
-                              <Button variant="outline" size="icon-sm" className="p-0"> <GalleryVertical /> </Button>
-                            </div>
-                          </Card>
-                        </div>
-                      </>
+                      <div className="mt-3 md:hidden">
+                        <Card className="p-2 w-full">
+                          <div className="flex gap-3 items-center justify-center">
+                            <Button variant="outline" size="icon-sm" className="p-0" onClick={() => addField('multiple_choice')}> <CirclePlus /> </Button>
+                            <Button variant="outline" size="icon-sm" className="p-0"> <Import /> </Button>
+                            <Button variant="outline" size="icon-sm" className="p-0" onClick={() => addField('short_text')}> <CaseSensitive /> </Button>
+                            <Button variant="outline" size="icon-sm" className="p-0"> <Image /> </Button>
+                            <Button variant="outline" size="icon-sm" className="p-0"> <GalleryVertical /> </Button>
+                          </div>
+                        </Card>
+                      </div>
                     )}
 
                     {selected === f.id && (
@@ -261,6 +322,25 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
             )}
           </Card>
         </div>
+
+      {/** Fixed-position desktop inspector so it never gets clipped by container */}
+      {selected && (
+        <div
+          ref={inspectorRef}
+          className="hidden md:block"
+          style={{ position: 'fixed', top: inspectorPos.top, left: inspectorPos.left, zIndex: 60 }}
+        >
+          <Card className="p-2 w-16">
+            <div className="flex flex-col gap-3 items-center">
+              <Button variant="outline" size="icon-sm" className="p-0" onClick={() => addField('multiple_choice')}> <CirclePlus /> </Button>
+              <Button variant="outline" size="icon-sm" className="p-0"> <Import /> </Button>
+              <Button variant="outline" size="icon-sm" className="p-0" onClick={() => addField('short_text')}> <CaseSensitive /> </Button>
+              <Button variant="outline" size="icon-sm" className="p-0"> <Image /> </Button>
+              <Button variant="outline" size="icon-sm" className="p-0"> <GalleryVertical /> </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       </div>
     </div>
