@@ -21,14 +21,23 @@ interface EditorProps {
 
 export default function Editor({ formId, initialSchema }: EditorProps) {
   const [fields, setFields] = React.useState<Field[]>(initialSchema.fields ?? [])
-  const [selected, setSelected] = React.useState<string | null>(fields[0]?.id ?? null)
+  // ensure the form always has a title field at index 0 which cannot be deleted
+  function ensureHasTitle(arr: Field[]) {
+    const hasTitle = arr.some((f) => f.type === 'form_title')
+    if (hasTitle) return arr
+    const titleId = `field_title`
+    const titleField: Field = { id: titleId, type: 'form_title', label: initialSchema?.title ?? 'Untitled form', order: 0 }
+    return [titleField, ...arr.map((f, i) => ({ ...f, order: i + 1 }))]
+  }
+
+  const [selected, setSelected] = React.useState<string | null>(ensureHasTitle(fields)[0]?.id ?? null)
   const [isSaving, setIsSaving] = React.useState(false)
   const [isDirty, setIsDirty] = React.useState(false)
   const [lastSavedAt, setLastSavedAt] = React.useState<Date | null>(null)
 
   React.useEffect(() => {
-    setFields(initialSchema.fields ?? [])
-    setSelected((initialSchema.fields?.[0]?.id) ?? null)
+    setFields(ensureHasTitle(initialSchema.fields ?? []))
+    setSelected(ensureHasTitle(initialSchema.fields ?? [])[0]?.id ?? null)
   }, [initialSchema])
 
   function addField(type: string) {
@@ -45,6 +54,10 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
   }
 
   function deleteField(id: string) {
+    const toDelete = fields.find((f) => f.id === id)
+    if (!toDelete) return
+    // prevent deleting the form title
+    if (toDelete.type === 'form_title') return
     setFields((s) => s.filter((f) => f.id !== id))
     if (selected === id) {
       setSelected(fields.length > 1 ? fields[0].id : null)
@@ -115,7 +128,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
   const selectedIndex = fields.findIndex((f) => f.id === selected)
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="max-w-6xl w-full mx-auto px-4 flex flex-col gap-4">
       {/* Top toolbar */}
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-semibold">Form Editor</h2>
@@ -130,8 +143,8 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-4">
-        {/* Sidebar: Field Types */}
+      <div className="grid grid-cols-12 gap-4 justify-center items-start">
+        {/* Sidebar: Field Types
         <aside className="col-span-3">
           <Card className="p-4">
             <div className="font-semibold mb-4">Add a field</div>
@@ -156,11 +169,11 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
               </Button>
             </div>
           </Card>
-        </aside>
+        </aside> */}
 
         {/* Center: Canvas */}
-        <section className="col-span-6">
-          <Card className="p-6">
+        <div className="col-span-12">
+          <Card className="p-6 w-full max-w-3xl mx-auto">
             <div className="font-semibold mb-4">Form preview</div>
             {fields.length === 0 ? (
               <div className="text-sm text-muted-foreground py-8 text-center">
@@ -171,64 +184,84 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
                 {fields.map((f, idx) => (
                   <div
                     key={f.id}
-                    className={`p-4 border-2 rounded-md cursor-pointer transition-colors ${
+                    className={`relative p-4 border-2 rounded-md cursor-pointer transition-all overflow-visible ${
                       selected === f.id
-                        ? 'border-primary bg-primary/5'
+                        ? 'border-primary bg-primary/5 shadow-sm md:py-6'
                         : 'border-slate-200 hover:border-slate-300'
                     }`}
                     onClick={() => setSelected(f.id)}
                   >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="text-xs text-muted-foreground uppercase tracking-wide">
-                          {f.type} {f.required && '(required)'}
-                        </div>
-                        <div className="font-medium mt-1">{f.label}</div>
-                      </div>
-                      <div className="flex gap-1">
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          disabled={idx === 0}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            moveField(idx, idx - 1)
-                          }}
-                        >
-                          ↑
-                        </Button>
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          disabled={idx === fields.length - 1}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            moveField(idx, idx + 1)
-                          }}
-                        >
-                          ↓
-                        </Button>
+                    <div className="flex items-start">
+                      <div className="flex-1">
+                        {f.type === 'form_title' ? (
+                          <div>
+                            <Input
+                              value={f.label}
+                              onChange={(e) => updateField(f.id, { label: e.target.value })}
+                              placeholder="Form title"
+                              className="text-2xl font-semibold"
+                            />
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="text-xs text-muted-foreground uppercase tracking-wide">
+                              {f.type} {f.required && '(required)'}
+                            </div>
+                            <div className="font-medium mt-1">{f.label}</div>
+                          </div>
+                        )}
                       </div>
                     </div>
+
+                    {/* Contextual inspector shown for selected field */}
+                    {selected === f.id && (
+                      <>
+                        <div className="absolute top-1/2 left-full ml-8 -translate-y-1/2 hidden md:block">
+                          <Card className="p-2 w-16">
+                            <div className="flex flex-col gap-3 items-center">
+                              <Button variant="outline" size="icon-sm" className="p-0"> <CirclePlus /> </Button>
+                              <Button variant="outline" size="icon-sm" className="p-0"> <Import /> </Button>
+                              <Button variant="outline" size="icon-sm" className="p-0"> <CaseSensitive /> </Button>
+                              <Button variant="outline" size="icon-sm" className="p-0"> <Image /> </Button>
+                              <Button variant="outline" size="icon-sm" className="p-0"> <GalleryVertical /> </Button>
+                            </div>
+                          </Card>
+                        </div>
+
+                        <div className="mt-3 md:hidden">
+                          <Card className="p-2 w-full">
+                            <div className="flex gap-3 items-center justify-center">
+                              <Button variant="outline" size="icon-sm" className="p-0"> <CirclePlus /> </Button>
+                              <Button variant="outline" size="icon-sm" className="p-0"> <Import /> </Button>
+                              <Button variant="outline" size="icon-sm" className="p-0"> <CaseSensitive /> </Button>
+                              <Button variant="outline" size="icon-sm" className="p-0"> <Image /> </Button>
+                              <Button variant="outline" size="icon-sm" className="p-0"> <GalleryVertical /> </Button>
+                            </div>
+                          </Card>
+                        </div>
+                      </>
+                    )}
+
+                    {selected === f.id && (
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
+                        <div className="text-muted-foreground">Field</div>
+                        <div className="flex items-center gap-2">
+                          <Button size="xs" variant="ghost" disabled={idx === 0} onClick={(e) => { e.stopPropagation(); moveField(idx, idx - 1) }}>↑</Button>
+                          <Button size="xs" variant="ghost" disabled={idx === fields.length - 1} onClick={(e) => { e.stopPropagation(); moveField(idx, idx + 1) }}>↓</Button>
+                          <Button size="xs" variant="ghost" onClick={(e) => { e.stopPropagation(); updateField(f.id, { required: !f.required }) }}>
+                            {f.required ? 'Required' : 'Optional'}
+                          </Button>
+                          <Button size="xs" variant="destructive" onClick={(e) => { e.stopPropagation(); deleteField(f.id) }} disabled={f.type === 'form_title'}>Delete</Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </Card>
-        </section>
+        </div>
 
-        {/* Right sidebar: Inspector */}
-        <aside className="col-auto self-start">
-          <Card className="p-2 w-max">
-            <div className="flex flex-col gap-3 items-center">
-              <Button variant="outline" size="icon-sm" className="p-0"> <CirclePlus /> </Button>
-              <Button variant="outline" size="icon-sm" className="p-0"> <Import /> </Button>
-              <Button variant="outline" size="icon-sm" className="p-0"> <CaseSensitive /> </Button>
-              <Button variant="outline" size="icon-sm" className="p-0"> <Image /> </Button>
-              <Button variant="outline" size="icon-sm" className="p-0"> <GalleryVertical /> </Button>
-            </div>
-          </Card>
-        </aside>
       </div>
     </div>
   )
