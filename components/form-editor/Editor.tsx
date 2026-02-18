@@ -1,19 +1,21 @@
 "use client"
 
 import * as React from 'react'
+import FormEditorHeader, { type Tab } from './FormEditorHeader'
+import ResponsesTab from './tabs/ResponsesTab'
+import SettingsTab from './tabs/SettingsTab'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-
 import { Trash2, Copy } from 'lucide-react'
 import InspectorButtons from './InspectorButtons'
 
-type FieldOption = {
+export type FieldOption = {
   id: string
   label: string
 }
 
-type Field = {
+export type Field = {
   id: string
   type: string
   label: string
@@ -23,7 +25,7 @@ type Field = {
   options?: FieldOption[]
 }
 
-const FIELD_TYPES = [
+export const FIELD_TYPES = [
   { value: 'short_text', label: 'Short answer' },
   { value: 'paragraph', label: 'Paragraph' },
   { value: 'multiple_choice', label: 'Multiple choice' },
@@ -35,7 +37,7 @@ const FIELD_TYPES = [
   { value: 'rating', label: 'Rating' },
 ] as const
 
-function getDefaultLabel(type: string): string {
+export function getDefaultLabel(type: string): string {
   const fieldType = FIELD_TYPES.find(ft => ft.value === type)
   return fieldType ? `${fieldType.label} question` : ''
 }
@@ -46,6 +48,7 @@ interface EditorProps {
 }
 
 export default function Editor({ formId, initialSchema }: EditorProps) {
+  const [activeTab, setActiveTab] = React.useState<Tab>('questions')
   const [fields, setFields] = React.useState<Field[]>((initialSchema.fields as Field[]) ?? [])
   // form name (stored in DB `name`), and fields (schema) stored separately
   const [formName, setFormName] = React.useState<string>(initialSchema?.name ?? initialSchema?.title ?? 'Untitled form')
@@ -246,22 +249,18 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
   }, [selected, fields])
 
   return (
-    <div className="max-w-6xl w-full mx-auto px-4 flex flex-col gap-4">
-      {/* Top toolbar */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold">Form Editor</h2>
-        <div className="text-sm text-muted-foreground">
-          {isSaving
-            ? 'Saving…'
-            : lastSavedAt
-            ? `Saved ${lastSavedAt.toLocaleTimeString()}`
-            : isDirty
-            ? 'Unsaved changes'
-            : 'All changes saved'}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-12 gap-4 justify-center items-start">
+    <>
+      <FormEditorHeader
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        isSaving={isSaving}
+        lastSavedAt={lastSavedAt}
+        isDirty={isDirty}
+      />
+      
+      {activeTab === 'questions' && (
+        <div className="max-w-6xl w-full mx-auto px-4 flex flex-col gap-4 py-8">
+          <div className="grid grid-cols-12 gap-4 justify-center items-start">
 
         {/* Center: Canvas */}
         <div className="col-span-12">
@@ -659,7 +658,12 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
         </div>
       )}
 
-      </div>
-    </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'responses' && <ResponsesTab />}
+      {activeTab === 'settings' && <SettingsTab />}
+    </>
   )
 }
