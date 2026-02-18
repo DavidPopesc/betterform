@@ -631,9 +631,9 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
                     )}
                   </div>
 
-                  {/* mobile: render horizontal adder outside the question, between this and the next */}
+                  {/* render horizontal adder outside the question, between this and the next */}
                   {selected === f.id && (
-                    <div className="mt-3 md:hidden">
+                    <div className="mt-3">
                       <Card className="p-2 w-full">
                         <InspectorButtons onAdd={addField} />
                       </Card>
@@ -647,18 +647,7 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
           </Card>
         </div>
 
-      {/** Fixed-position desktop inspector so it never gets clipped by container */}
-      {selected && (
-        <div
-          ref={inspectorRef}
-          className="hidden md:block"
-          style={{ position: 'fixed', top: inspectorPos.top, left: inspectorPos.left, zIndex: 60 }}
-        >
-          <Card className="p-2 w-16">
-            <InspectorButtons onAdd={addField} vertical />
-          </Card>
-        </div>
-      )}
+
 
           </div>
         </div>

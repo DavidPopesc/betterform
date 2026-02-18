@@ -33,16 +33,26 @@ export default function TopBar({
   return (
     <header className="sticky top-0 z-50 bg-white border-b">
       <div className="max-w-6xl mx-auto px-4">
-        <div className="flex items-center justify-between py-3">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-2 py-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center justify-between gap-4">
             <Link href="/dashboard" className="inline-flex items-center gap-4">
               <Image src="/betterformlogo.png" width={40} height={40} alt="Better Form logo" />
               <span className="text-2xl font-semibold">{title}</span>
             </Link>
+
+            <div className="text-sm text-muted-foreground md:hidden">
+              {isSaving
+                ? 'Saving…'
+                : lastSavedAt
+                ? `Saved ${lastSavedAt.toLocaleTimeString()}`
+                : isDirty
+                ? 'Unsaved changes'
+                : 'All changes saved'}
+            </div>
           </div>
 
-          <div className="flex items-center gap-6">
-            <nav className="flex gap-4">
+          <div className="flex items-center justify-between gap-6">
+            <nav className="flex gap-4 overflow-x-auto whitespace-nowrap">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -58,7 +68,7 @@ export default function TopBar({
               ))}
             </nav>
 
-            <div className="text-sm text-muted-foreground">
+            <div className="text-sm text-muted-foreground hidden md:block">
               {isSaving
                 ? 'Saving…'
                 : lastSavedAt
