@@ -202,7 +202,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
 
             {fields.length === 0 ? (
               <div className="text-sm text-muted-foreground py-8 text-center">
-                No fields yet — add one from the left to get started.
+                No fields yet — add one to get started.
                 <InspectorButtons onAdd={addField} className="justify-center mt-4" />
               </div>
             ) : (
