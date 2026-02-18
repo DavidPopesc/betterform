@@ -60,6 +60,7 @@ model Account {
 
 model Form {
   id        String      @id @default(uuid())
+  publicId  String      @unique @default(uuid()) // public sharing ID, different from internal ID
   accountId String
   account   Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name      String?

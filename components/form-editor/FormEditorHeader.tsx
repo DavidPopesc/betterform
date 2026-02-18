@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 
-type Tab = 'questions' | 'responses' | 'settings'
+type Tab = 'questions' | 'responses' | 'send' | 'settings'
 
 interface FormEditorHeaderProps {
   activeTab: Tab
@@ -22,6 +22,7 @@ export default function FormEditorHeader({
   const tabs: { id: Tab; label: string }[] = [
     { id: 'questions', label: 'Questions' },
     { id: 'responses', label: 'Responses' },
+    { id: 'send', label: 'Send' },
     { id: 'settings', label: 'Settings' },
   ]
 

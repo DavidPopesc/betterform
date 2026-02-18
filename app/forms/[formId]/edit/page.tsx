@@ -18,6 +18,7 @@ export default async function Page({ params }: { params: { formId?: string } | P
 
   const schema = (form?.schema as { fields?: unknown[] } | null) ?? { fields: [] }
   const initialSchema = { fields: schema.fields as unknown[], name: form?.name ?? undefined }
+  const publicId = form?.publicId ?? formId // fallback to formId if publicId not set yet
 
   return (
     <div className="min-h-svh p-8">
@@ -26,7 +27,7 @@ export default async function Page({ params }: { params: { formId?: string } | P
         <h1 className="text-3xl font-semibold mb-4">Better Form</h1>
       </Link>
       {/* Editor is a client component that manages local state */}
-      <Editor formId={formId} initialSchema={initialSchema} />
+      <Editor formId={formId} publicId={publicId} initialSchema={initialSchema} />
     </div>
   )
 }

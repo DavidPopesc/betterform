@@ -3,6 +3,7 @@
 import * as React from 'react'
 import FormEditorHeader, { type Tab } from './FormEditorHeader'
 import ResponsesTab from './tabs/ResponsesTab'
+import SendTab from './tabs/SendTab'
 import SettingsTab from './tabs/SettingsTab'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -44,10 +45,11 @@ export function getDefaultLabel(type: string): string {
 
 interface EditorProps {
   formId: string
+  publicId: string
   initialSchema: { fields?: unknown[]; name?: string; title?: string }
 }
 
-export default function Editor({ formId, initialSchema }: EditorProps) {
+export default function Editor({ formId, publicId, initialSchema }: EditorProps) {
   const [activeTab, setActiveTab] = React.useState<Tab>('questions')
   const [fields, setFields] = React.useState<Field[]>((initialSchema.fields as Field[]) ?? [])
   // form name (stored in DB `name`), and fields (schema) stored separately
@@ -663,6 +665,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
       )}
 
       {activeTab === 'responses' && <ResponsesTab />}
+      {activeTab === 'send' && <SendTab publicId={publicId} />}
       {activeTab === 'settings' && <SettingsTab />}
     </>
   )
