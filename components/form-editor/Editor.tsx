@@ -32,7 +32,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
     // load fields but strip any legacy `form_title` entries from stored schema
     const loaded = (initialSchema.fields ?? []).filter((f: Field) => f.type !== 'form_title')
     setFields(loaded.map((f: Field, i: number) => ({ ...f, order: i })))
-    setFormName(initialSchema?.name ?? initialSchema?.title ?? 'Untitled form')
+    setFormName(initialSchema?.name ?? initialSchema?.name ?? 'Untitled form')
     setSelected((loaded[0]?.id) ?? null)
   }, [initialSchema])
 
@@ -103,7 +103,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
       void saveForm()
     }, 5000)
     return () => clearTimeout(id)
-  }, [fields, isDirty])
+  }, [fields, isDirty, formName])
 
   // Try to persist on unload using navigator.sendBeacon as a best-effort
   React.useEffect(() => {
@@ -111,7 +111,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
       if (!isDirty) return
       try {
         const url = `/api/forms/${formId}/save`
-        const payload = JSON.stringify({ schema: { fields } })
+        const payload = JSON.stringify({ name: formName, schema: { fields } })
         const blob = new Blob([payload], { type: 'application/json' })
         navigator.sendBeacon(url, blob)
       } catch (e) {
@@ -120,7 +120,7 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [fields, isDirty, formId])
+  }, [fields, isDirty, formId, formName])
 
   const selectedField = fields.find((f) => f.id === selected) ?? null
   const selectedIndex = fields.findIndex((f) => f.id === selected)
@@ -181,33 +181,6 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
       </div>
 
       <div className="grid grid-cols-12 gap-4 justify-center items-start">
-        {/* Sidebar: Field Types
-        <aside className="col-span-3">
-          <Card className="p-4">
-            <div className="font-semibold mb-4">Add a field</div>
-            <div className="flex flex-col gap-2">
-              <Button size="sm" variant="outline" onClick={() => addField('short_text')}>
-                Short text
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => addField('paragraph')}>
-                Paragraph
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => addField('multiple_choice')}>
-                Multiple choice
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => addField('checkboxes')}>
-                Checkboxes
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => addField('dropdown')}>
-                Dropdown
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => addField('date')}>
-                Date
-              </Button>
-            </div>
-
-          </Card>
-        </aside> */}
 
         {/* Center: Canvas */}
         <div className="col-span-12">

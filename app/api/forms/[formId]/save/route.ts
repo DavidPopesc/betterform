@@ -20,11 +20,24 @@ export async function POST(
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 
-    const { schema } = await req.json()
+    const body = await req.json()
+    // Debug: log incoming payload to help diagnose truncated `name`
+    try {
+      // avoid logging huge blobs; stringify safely
+      const preview = JSON.stringify(body).slice(0, 2000)
+      console.log('Save form payload received:', preview)
+    } catch (err) {
+      console.log('Save form payload received (unserializable)')
+    }
+    const schema = body.schema
+    const name = body.name
+
+    const data: any = { schema }
+    if (typeof name === 'string') data.name = name
 
     const updated = await prisma.form.update({
       where: { id: formId },
-      data: { schema },
+      data,
     })
 
     return NextResponse.json({ success: true, form: updated })

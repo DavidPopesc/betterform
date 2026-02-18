@@ -16,7 +16,7 @@ export default async function Page({ params }: { params: { formId?: string } | P
   const { default: prisma } = await import('@/lib/db')
   const form = await prisma.form.findUnique({ where: { id: formId } })
 
-  const initialSchema = form?.schema ?? { fields: [] }
+  const initialSchema = { ...(form?.schema ?? { fields: [] }), name: form?.name }
 
   return (
     <div className="min-h-svh p-8">
