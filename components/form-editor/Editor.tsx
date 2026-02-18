@@ -151,6 +151,10 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
     if (['multiple_choice', 'checkboxes', 'dropdown'].includes(type)) {
       f.options = [{ id: `opt_${Math.random().toString(36).slice(2, 9)}`, label: 'Option 1' }]
     }
+    // Set default points when quiz mode is enabled
+    if (isQuiz && !['text', 'section', 'email', 'phone'].includes(type)) {
+      f.points = 1
+    }
     setFields((s) => {
       // insert after selected field; if nothing selected, append at end
       const found = s.findIndex((x) => x.id === selected)
@@ -353,6 +357,18 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                 className="text-2xl font-semibold"
               />
             </div>
+
+            {isQuiz && (() => {
+              const totalPoints = fields.reduce((sum, f) => {
+                if (['text', 'section', 'email', 'phone'].includes(f.type)) return sum
+                return sum + (f.points || 0)
+              }, 0)
+              return totalPoints > 0 ? (
+                <div className="mb-4 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-900">
+                  <span className="font-semibold">Quiz Mode:</span> Total {totalPoints} {totalPoints === 1 ? 'point' : 'points'}
+                </div>
+              ) : null
+            })()}
 
             {fields.length === 0 ? (
               <div className="text-sm text-muted-foreground py-8 text-center">
@@ -678,22 +694,44 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                         )}
 
                         {f.type === 'short_text' && (
-                          <div className="mt-4">
+                          <div className="mt-4 space-y-3">
                             <Input
                               placeholder="Short answer text"
                               disabled
                               className="bg-transparent border-0 border-b rounded-none"
                             />
+                            {isQuiz && (
+                              <div className="pt-2 border-t border-slate-200">
+                                <label className="text-xs text-muted-foreground block mb-1">Correct Answer (optional)</label>
+                                <Input
+                                  value={(typeof f.correctAnswer === 'string' ? f.correctAnswer : '') || ''}
+                                  onChange={(e) => updateField(f.id, { correctAnswer: e.target.value })}
+                                  placeholder="Enter the correct answer for grading"
+                                  className="text-sm"
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
 
                         {f.type === 'paragraph' && (
-                          <div className="mt-4">
+                          <div className="mt-4 space-y-3">
                             <Input
                               placeholder="Long answer text"
                               disabled
                               className="bg-transparent border-0 border-b rounded-none"
                             />
+                            {isQuiz && (
+                              <div className="pt-2 border-t border-slate-200">
+                                <label className="text-xs text-muted-foreground block mb-1">Correct Answer (optional)</label>
+                                <textarea
+                                  value={(typeof f.correctAnswer === 'string' ? f.correctAnswer : '') || ''}
+                                  onChange={(e) => updateField(f.id, { correctAnswer: e.target.value })}
+                                  placeholder="Enter the correct answer for grading"
+                                  className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm min-h-20 focus:outline-none focus:ring-2 focus:ring-primary"
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -866,17 +904,19 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                                     checked:before:translate-x-5"
                                 />
                               </label>
-                              {isQuiz && (
+                              {isQuiz && !['text', 'section', 'email', 'phone'].includes(f.type) && (
                                 <label className="flex items-center gap-2 text-sm">
                                   <span className="text-muted-foreground">Points</span>
                                   <input
                                     type="number"
                                     min="0"
-                                    value={f.points || 0}
+                                    value={f.points === undefined ? '' : f.points}
                                     onChange={(e) => {
                                       e.stopPropagation()
-                                      updateField(f.id, { points: parseInt(e.target.value) || 0 })
+                                      const val = e.target.value === '' ? 0 : parseInt(e.target.value) || 0
+                                      updateField(f.id, { points: val })
                                     }}
+                                    placeholder="0"
                                     className="w-16 border border-slate-200 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                                   />
                                 </label>

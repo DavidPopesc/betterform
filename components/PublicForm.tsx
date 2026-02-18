@@ -139,8 +139,15 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
         const userAnswers = Array.isArray(userResponse) ? userResponse : []
         const correct = field.correctAnswer.sort().join(',') === userAnswers.sort().join(',')
         if (correct) earned += field.points
+      } else if (typeof field.correctAnswer === 'string' && typeof userResponse === 'string') {
+        // For text-based and single-choice questions - case-insensitive comparison with trimmed whitespace
+        const correctTrimmed = field.correctAnswer.trim().toLowerCase()
+        const userTrimmed = userResponse.trim().toLowerCase()
+        if (correctTrimmed === userTrimmed) {
+          earned += field.points
+        }
       } else {
-        // For single-choice questions (multiple_choice, dropdown)
+        // For option-based questions (multiple_choice, dropdown) - exact ID match
         if (userResponse === field.correctAnswer) {
           earned += field.points
         }
@@ -390,6 +397,17 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
       <div className="max-w-2xl mx-auto">
         <Card className="p-8 mb-6">
           <h1 className="text-3xl font-bold mb-2">{formName || 'Untitled form'}</h1>
+          {isQuiz && (() => {
+            const totalPoints = fields.reduce((sum, f) => {
+              if (['text', 'section', 'email', 'phone'].includes(f.type)) return sum
+              return sum + (f.points || 0)
+            }, 0)
+            return totalPoints > 0 ? (
+              <div className="mt-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-900">
+                <span className="font-semibold">Quiz:</span> {totalPoints} {totalPoints === 1 ? 'point' : 'points'} total
+              </div>
+            ) : null
+          })()}
           {hasSections && (
             <p className="text-sm text-muted-foreground">
               Page {currentPage + 1} of {sections.length + 1}
