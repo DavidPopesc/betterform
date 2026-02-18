@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -26,8 +26,12 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const [showScore, setShowScore] = useState(false)
   const [apiEnabled, setApiEnabled] = useState(false)
   const [apiKey, setApiKey] = useState<string | null>(null)
+  const [responsesEnabled, setResponsesEnabled] = useState(true)
+  const [responseDeadline, setResponseDeadline] = useState<string>('')
+  const [successMessage, setSuccessMessage] = useState('Your response has been recorded.')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const successMessageTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const loadSettings = useCallback(async () => {
     setLoading(true)
@@ -40,6 +44,9 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         setShowScore(data.showScore || false)
         setApiEnabled(data.apiEnabled || false)
         setApiKey(data.apiKey || null)
+        setResponsesEnabled(data.responsesEnabled !== undefined ? data.responsesEnabled : true)
+        setResponseDeadline(data.responseDeadline ? new Date(data.responseDeadline).toISOString().slice(0, 16) : '')
+        setSuccessMessage(data.successMessage || 'Your response has been recorded.')
       }
     } catch (err) {
       console.error('Failed to load settings:', err)
@@ -51,6 +58,31 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   useEffect(() => {
     loadSettings()
   }, [loadSettings])
+
+  // Debounce success message updates
+  useEffect(() => {
+    if (successMessageTimeoutRef.current) {
+      clearTimeout(successMessageTimeoutRef.current)
+    }
+
+    successMessageTimeoutRef.current = setTimeout(async () => {
+      try {
+        await fetch(`/api/forms/${formId}/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ successMessage }),
+        })
+      } catch (err) {
+        console.error('Failed to update success message:', err)
+      }
+    }, 1500) // Wait 1.5 seconds after last keystroke
+
+    return () => {
+      if (successMessageTimeoutRef.current) {
+        clearTimeout(successMessageTimeoutRef.current)
+      }
+    }
+  }, [successMessage, formId])
 
   async function updateTheme(newTheme: string) {
     onThemeChange(newTheme)
@@ -152,6 +184,46 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     }
   }
 
+  async function toggleResponsesEnabled() {
+    const newResponsesEnabled = !responsesEnabled
+    setResponsesEnabled(newResponsesEnabled)
+    setSaving(true)
+    try {
+      await fetch(`/api/forms/${formId}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ responsesEnabled: newResponsesEnabled }),
+      })
+    } catch (err) {
+      console.error('Failed to update responses enabled:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function updateResponseDeadline(value: string) {
+    setResponseDeadline(value)
+    setSaving(true)
+    try {
+      const deadline = value ? new Date(value).toISOString() : null
+      await fetch(`/api/forms/${formId}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ responseDeadline: deadline }),
+      })
+    } catch (err) {
+      console.error('Failed to update deadline:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function updateSuccessMessage(value: string) {
+    if (value.length > 500) return
+    setSuccessMessage(value)
+    // API call is handled by the useEffect with debouncing
+  }
+
   if (loading) {
     return (
       <div className="max-w-3xl w-full mx-auto px-4 py-8">
@@ -229,6 +301,62 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
               </label>
             </div>
           )}
+        </Card>
+        
+        <Card className="p-6">
+          <h4 className="font-semibold mb-4">Response Controls</h4>
+          <p className="text-sm text-muted-foreground mb-4">
+            Control when and how respondents can submit forms
+          </p>
+          
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <span className="text-muted-foreground">Accept responses</span>
+                <input
+                  type="checkbox"
+                  checked={responsesEnabled}
+                  onChange={toggleResponsesEnabled}
+                  disabled={saving}
+                  className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                    before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                    checked:before:translate-x-5 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </label>
+            </div>
+
+            {responsesEnabled && (
+              <div>
+                <label className="text-sm text-muted-foreground block mb-2">Response deadline (optional)</label>
+                <input
+                  type="datetime-local"
+                  value={responseDeadline}
+                  onChange={(e) => updateResponseDeadline(e.target.value)}
+                  disabled={saving}
+                  className="w-full max-w-sm border border-slate-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Forms will automatically stop accepting responses after this time</p>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <h4 className="font-semibold mb-4">Success Message</h4>
+          <p className="text-sm text-muted-foreground mb-4">
+            Customize the message shown after respondents submit the form (max 500 characters)
+          </p>
+          
+          <div>
+            <textarea
+              value={successMessage}
+              onChange={(e) => updateSuccessMessage(e.target.value)}
+              maxLength={500}
+              placeholder="Your response has been recorded."
+              className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm min-h-24 focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <p className="text-xs text-muted-foreground mt-2">{successMessage.length} / 500 characters</p>
+          </div>
         </Card>
         
         <Card className="p-6">

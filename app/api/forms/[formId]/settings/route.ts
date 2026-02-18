@@ -26,6 +26,9 @@ export async function GET(
         theme: true,
         isQuiz: true,
         showScore: true,
+        successMessage: true,
+        responsesEnabled: true,
+        responseDeadline: true,
       }
     })
     
@@ -39,6 +42,9 @@ export async function GET(
       theme: form.theme,
       isQuiz: form.isQuiz,
       showScore: form.showScore,
+      successMessage: form.successMessage,
+      responsesEnabled: form.responsesEnabled,
+      responseDeadline: form.responseDeadline,
     })
   } catch (err) {
     console.error('Fetch settings error:', err)
@@ -63,7 +69,7 @@ export async function POST(
     // Verify form ownership
     const form = await prisma.form.findUnique({ 
       where: { id: formId },
-      select: { accountId: true, apiEnabled: true, apiKey: true, theme: true, isQuiz: true, showScore: true }
+      select: { accountId: true, apiEnabled: true, apiKey: true, theme: true, isQuiz: true, showScore: true, successMessage: true, responsesEnabled: true, responseDeadline: true }
     })
     
     if (!form || form.accountId !== user.id) {
@@ -142,6 +148,42 @@ export async function POST(
       })
       
       return NextResponse.json({ apiKey })
+    }
+
+    // Handle success message
+    if (body.successMessage !== undefined) {
+      const successMessage = String(body.successMessage).slice(0, 500)
+      
+      await prisma.form.update({
+        where: { id: formId },
+        data: { successMessage },
+      })
+      
+      return NextResponse.json({ successMessage })
+    }
+
+    // Handle responses enabled toggle
+    if (body.responsesEnabled !== undefined) {
+      const responsesEnabled = Boolean(body.responsesEnabled)
+      
+      await prisma.form.update({
+        where: { id: formId },
+        data: { responsesEnabled },
+      })
+      
+      return NextResponse.json({ responsesEnabled })
+    }
+
+    // Handle response deadline
+    if (body.responseDeadline !== undefined) {
+      const responseDeadline = body.responseDeadline ? new Date(body.responseDeadline) : null
+      
+      await prisma.form.update({
+        where: { id: formId },
+        data: { responseDeadline },
+      })
+      
+      return NextResponse.json({ responseDeadline })
     }
 
     return NextResponse.json({ error: 'invalid_request' }, { status: 400 })

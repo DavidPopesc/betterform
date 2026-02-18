@@ -76,6 +76,9 @@ model Form {
   isQuiz    Boolean     @default(false)
   showScore Boolean     @default(false)
 
+  // Success message customization
+  successMessage String  @default("Your response has been recorded.")
+
   // Response restrictions
   responsesEnabled   Boolean     @default(true)
   responseDeadline   DateTime?

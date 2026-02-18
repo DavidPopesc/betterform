@@ -18,6 +18,9 @@ export default async function PublicFormPage({
       theme: true,
       isQuiz: true,
       showScore: true,
+      responsesEnabled: true,
+      responseDeadline: true,
+      successMessage: true,
     },
   })
 
@@ -25,8 +28,8 @@ export default async function PublicFormPage({
     notFound()
   }
 
-  const schema = form.schema as { fields?: any[] }
-  const fields = schema.fields || []
+  const schema = form.schema as { fields?: Array<Record<string, unknown>> }
+  const fields = (schema.fields || []) as any[] // Type assertion for fields - schema validation happens at runtime
   const theme = form.theme ?? 'slate'
 
   return (
@@ -37,6 +40,9 @@ export default async function PublicFormPage({
       theme={theme}
       isQuiz={form.isQuiz ?? false}
       showScore={form.showScore ?? false}
+      responsesEnabled={form.responsesEnabled ?? true}
+      responseDeadline={form.responseDeadline}
+      successMessage={form.successMessage ?? 'Your response has been recorded.'}
     />
   )
 }

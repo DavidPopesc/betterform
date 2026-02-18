@@ -24,6 +24,9 @@ interface PublicFormProps {
   theme?: string
   isQuiz?: boolean
   showScore?: boolean
+  responsesEnabled?: boolean
+  responseDeadline?: Date | null
+  successMessage?: string
 }
 
 const THEME_COLORS: Record<string, { bg: string; border: string; input: string; button: string; text: string }> = {
@@ -64,7 +67,7 @@ const THEME_COLORS: Record<string, { bg: string; border: string; input: string; 
   },
 }
 
-export default function PublicForm({ publicId, formName, fields, theme = 'slate', isQuiz = false, showScore = false }: PublicFormProps) {
+export default function PublicForm({ publicId, formName, fields, theme = 'slate', isQuiz = false, showScore = false, responsesEnabled = true, responseDeadline = null, successMessage = 'Your response has been recorded.' }: PublicFormProps) {
   const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [responses, setResponses] = useState<Record<string, string | string[] | number>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -201,7 +204,7 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
           <Card className="p-8 text-center">
             <div className="text-4xl mb-4">✓</div>
             <h2 className="text-2xl font-semibold mb-2">Thank you!</h2>
-            <p className="text-muted-foreground">Your response has been recorded.</p>
+            <p className="text-muted-foreground">{successMessage}</p>
             {isQuiz && showScore && score && (
               <div className="mt-6 pt-6 border-t">
                 <h3 className="text-xl font-semibold mb-2">Your Score</h3>
@@ -397,6 +400,19 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
       <div className="max-w-2xl mx-auto">
         <Card className="p-8 mb-6">
           <h1 className="text-3xl font-bold mb-2">{formName || 'Untitled form'}</h1>
+          
+          {!responsesEnabled && (
+            <div className="mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-900">
+              <span className="font-semibold">This form is not accepting responses.</span>
+            </div>
+          )}
+          
+          {responsesEnabled && responseDeadline && new Date() > new Date(responseDeadline) && (
+            <div className="mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-900">
+              <span className="font-semibold">This form is no longer accepting responses.</span> The response deadline has passed.
+            </div>
+          )}
+          
           {isQuiz && (() => {
             const totalPoints = fields.reduce((sum, f) => {
               if (['text', 'section', 'email', 'phone'].includes(f.type)) return sum
@@ -440,18 +456,18 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
           <div className="mt-6 flex items-center justify-between">
             <div>
               {currentPage > 0 && (
-                <Button type="button" variant="outline" onClick={handlePrevious}>
+                <Button type="button" variant="outline" onClick={handlePrevious} disabled={!responsesEnabled || !!(responseDeadline && new Date() > new Date(responseDeadline))}>
                   Previous
                 </Button>
               )}
             </div>
             <div>
               {isLastPage ? (
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? 'Submitting...' : 'Submit'}
+                <Button type="submit" disabled={isSubmitting || !responsesEnabled || !!(responseDeadline && new Date() > new Date(responseDeadline))}>
+                  {!responsesEnabled || !!(responseDeadline && new Date() > new Date(responseDeadline)) ? 'Form closed' : isSubmitting ? 'Submitting...' : 'Submit'}
                 </Button>
               ) : (
-                <Button type="button" onClick={handleNext}>
+                <Button type="button" onClick={handleNext} disabled={!responsesEnabled || !!(responseDeadline && new Date() > new Date(responseDeadline))}>
                   Next
                 </Button>
               )}
