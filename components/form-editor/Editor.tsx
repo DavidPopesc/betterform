@@ -8,7 +8,7 @@ import SettingsTab from './tabs/SettingsTab'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Trash2, Copy } from 'lucide-react'
+import { Trash2, Copy, ArrowUp, ArrowDown, GripVertical } from 'lucide-react'
 import InspectorButtons from './InspectorButtons'
 
 export type FieldOption = {
@@ -58,6 +58,8 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
   const [isSaving, setIsSaving] = React.useState(false)
   const [isDirty, setIsDirty] = React.useState(false)
   const [lastSavedAt, setLastSavedAt] = React.useState<Date | null>(null)
+  const [draggedIndex, setDraggedIndex] = React.useState<number | null>(null)
+  const [dropTarget, setDropTarget] = React.useState<number | null>(null)
 
   React.useEffect(() => {
     // load fields but strip any legacy `form_title` entries from stored schema
@@ -153,14 +155,16 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
     setIsDirty(true)
   }
 
-  // moveField kept for potential future drag-reordering feature
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function moveField(from: number, to: number) {
-    if (to < 0 || to >= fields.length) return
-    const updated = [...fields]
-    const [removed] = updated.splice(from, 1)
-    updated.splice(to, 0, removed)
-    setFields(updated)
+    if (to < 0 || to >= fields.length || from === to) return
+    setFields((s) => {
+      const updated = [...s]
+      const [removed] = updated.splice(from, 1)
+      updated.splice(to, 0, removed)
+      const withOrder = updated.map((it, i) => ({ ...it, order: i }))
+      setSelected(removed.id)
+      return withOrder
+    })
     setIsDirty(true)
   }
 
@@ -210,46 +214,6 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [fields, isDirty, formId, formName])
 
-  const inspectorRef = React.useRef<HTMLDivElement | null>(null)
-  const [inspectorPos, setInspectorPos] = React.useState<{ top: number; left: number; visible: boolean }>({ top: 0, left: 0, visible: false })
-
-  React.useEffect(() => {
-    function updatePos() {
-      if (!selected) {
-        setInspectorPos((s) => ({ ...s, visible: false }))
-        return
-      }
-      const fieldEl = document.getElementById(`field-${selected}`)
-      const inspectorEl = inspectorRef.current
-      if (!fieldEl || !inspectorEl) {
-        setInspectorPos((s) => ({ ...s, visible: false }))
-        return
-      }
-      const fieldRect = fieldEl.getBoundingClientRect()
-      const inspRect = inspectorEl.getBoundingClientRect()
-      const margin = 12
-      // prefer right side
-      let left = fieldRect.right + margin
-      let top = fieldRect.top + window.scrollY + fieldRect.height / 2 - inspRect.height / 2
-      // if it overflows right edge, place on left
-      if (left + inspRect.width > window.innerWidth - margin) {
-        left = Math.max(margin, fieldRect.left - margin - inspRect.width)
-      }
-      // clamp vertically
-      const minTop = window.scrollY + margin
-      const maxTop = window.scrollY + window.innerHeight - inspRect.height - margin
-      top = Math.min(Math.max(top, minTop), maxTop)
-      setInspectorPos({ top, left, visible: true })
-    }
-    updatePos()
-    window.addEventListener('resize', updatePos)
-    window.addEventListener('scroll', updatePos)
-    return () => {
-      window.removeEventListener('resize', updatePos)
-      window.removeEventListener('scroll', updatePos)
-    }
-  }, [selected, fields])
-
   return (
     <>
       <TopBar
@@ -290,19 +254,27 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
               <div className="space-y-3">
                 {fields.map((f, idx) => (
                   <React.Fragment key={f.id}>
+                  {/* Drop zone indicator above field */}
+                  {draggedIndex !== null && dropTarget === idx && draggedIndex !== idx && (
+                    <div className="h-1 bg-primary rounded-full mb-2 transition-all" />
+                  )}
+                  
                   <div id={`field-${f.id}`}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData('text/plain', String(idx))
-                      e.dataTransfer.effectAllowed = 'move'
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      setDropTarget(idx)
                     }}
-                    onDragOver={(e) => e.preventDefault()}
+                    onDragLeave={() => setDropTarget(null)}
                     onDrop={(e) => {
                       e.preventDefault()
                       const from = Number(e.dataTransfer.getData('text/plain'))
                       const to = idx
                       if (Number.isNaN(from)) return
-                      if (from === to) return
+                      if (from === to) {
+                        setDraggedIndex(null)
+                        setDropTarget(null)
+                        return
+                      }
                       setFields((s) => {
                         const next = [...s]
                         const [moved] = next.splice(from, 1)
@@ -310,15 +282,19 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
                         if (from < to) insertAt = to
                         next.splice(insertAt, 0, moved)
                         const withOrder = next.map((it, i) => ({ ...it, order: i }))
-                        // select moved field
                         setSelected(moved.id)
                         return withOrder
                       })
+                      setIsDirty(true)
+                      setDraggedIndex(null)
+                      setDropTarget(null)
                     }}
-                    className={`relative p-4 border-2 rounded-md cursor-pointer transition-all overflow-visible ${
+                    className={`relative p-4 border-2 rounded-md transition-all overflow-visible ${
                       selected === f.id
                         ? 'border-primary bg-primary/5 shadow-sm md:py-6'
                         : 'border-slate-200 hover:border-slate-300'
+                    } ${
+                      draggedIndex === idx ? 'opacity-40' : ''
                     }`}
                     onClick={() => setSelected(f.id)}
                   >
@@ -585,6 +561,85 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
                     {selected === f.id && (
                       <div className="mt-4 pt-4 border-t flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
+                          <div
+                            draggable
+                            onDragStart={(e) => {
+                              e.stopPropagation()
+                              setDraggedIndex(idx)
+                              e.dataTransfer.setData('text/plain', String(idx))
+                              e.dataTransfer.effectAllowed = 'move'
+                              
+                              // Create drag preview of entire field card
+                              const fieldElement = document.getElementById(`field-${f.id}`)
+                              if (fieldElement) {
+                                const clone = fieldElement.cloneNode(true) as HTMLElement
+                                clone.style.position = 'absolute'
+                                clone.style.top = '-9999px'
+                                clone.style.width = fieldElement.offsetWidth + 'px'
+                                clone.style.opacity = '0.8'
+                                document.body.appendChild(clone)
+                                e.dataTransfer.setDragImage(clone, fieldElement.offsetWidth / 2, 20)
+                                setTimeout(() => document.body.removeChild(clone), 0)
+                              }
+                            }}
+                            onDragEnd={() => {
+                              setDraggedIndex(null)
+                              setDropTarget(null)
+                            }}
+                            className="cursor-grab active:cursor-grabbing"
+                          >
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              className="p-0"
+                              title="Drag to reorder"
+                              onMouseDown={(e) => e.stopPropagation()}
+                            >
+                              <GripVertical className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="p-0 cursor-pointer disabled:cursor-not-allowed"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              moveField(idx, idx + 1)
+                            }}
+                            title="Move down"
+                            disabled={idx >= fields.length - 1}
+                          >
+                            <ArrowDown className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="p-0 cursor-pointer disabled:cursor-not-allowed"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              moveField(idx, idx - 1)
+                            }}
+                            title="Move up"
+                            disabled={idx === 0}
+                          >
+                            <ArrowUp className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <span className="text-muted-foreground">Required</span>
+                            <input
+                              type="checkbox"
+                              checked={f.required || false}
+                              onChange={(e) => {
+                                e.stopPropagation()
+                                updateField(f.id, { required: e.target.checked })
+                              }}
+                              className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                                before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                                checked:before:translate-x-5"
+                            />
+                          </label>
                           <Button
                             size="icon-sm"
                             variant="ghost"
@@ -609,23 +664,6 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="h-6 w-px bg-slate-200" />
-                          <label className="flex items-center gap-2 text-sm cursor-pointer">
-                            <span className="text-muted-foreground">Required</span>
-                            <input
-                              type="checkbox"
-                              checked={f.required || false}
-                              onChange={(e) => {
-                                e.stopPropagation()
-                                updateField(f.id, { required: e.target.checked })
-                              }}
-                              className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
-                                before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
-                                checked:before:translate-x-5"
-                            />
-                          </label>
                         </div>
                       </div>
                     )}
