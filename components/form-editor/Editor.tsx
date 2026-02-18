@@ -208,8 +208,8 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
             ) : (
               <div className="space-y-3">
                 {fields.map((f, idx) => (
+                  <React.Fragment key={f.id}>
                   <div id={`field-${f.id}`}
-                    key={f.id}
                     draggable
                     onDragStart={(e) => {
                       e.dataTransfer.setData('text/plain', String(idx))
@@ -263,15 +263,6 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
                       </div>
                     </div>
 
-                    {/* Contextual inspector shown for selected field */}
-                    {selected === f.id && (
-                      <div className="mt-3 md:hidden">
-                        <Card className="p-2 w-full">
-                            <InspectorButtons onAdd={addField} />
-                        </Card>
-                      </div>
-                    )}
-
                     {selected === f.id && (
                       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
                         <div className="text-muted-foreground">Field</div>
@@ -286,6 +277,17 @@ export default function Editor({ formId, initialSchema }: EditorProps) {
                       </div>
                     )}
                   </div>
+
+                  {/* mobile: render horizontal adder outside the question, between this and the next */}
+                  {selected === f.id && (
+                    <div className="mt-3 md:hidden">
+                      <Card className="p-2 w-full">
+                        <InspectorButtons onAdd={addField} />
+                      </Card>
+                    </div>
+                  )}
+
+                  </React.Fragment>
                 ))}
               </div>
             )}
