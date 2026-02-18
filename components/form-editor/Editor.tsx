@@ -192,15 +192,21 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
     if (!isDirty) return
     const id = setTimeout(() => {
       void saveForm()
-    }, 5000)
+    }, 2000)
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fields, isDirty, formName])
 
   // Try to persist on unload using navigator.sendBeacon as a best-effort
   React.useEffect(() => {
-    function handleBeforeUnload() {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
       if (!isDirty) return
+      
+      // Show browser warning dialog
+      e.preventDefault()
+      e.returnValue = ''
+      
+      // Try to save in background
       try {
         const url = `/api/forms/${formId}/save`
         const payload = JSON.stringify({ name: formName, schema: { fields } })
@@ -220,7 +226,6 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
         activeTab={activeTab}
         onTabChange={setActiveTab}
         isSaving={isSaving}
-        lastSavedAt={lastSavedAt}
         isDirty={isDirty}
       />
       

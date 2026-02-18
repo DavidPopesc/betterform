@@ -23,9 +23,9 @@ export default function InspectorButtons({ onAdd, className, vertical }: Props) 
           <Button variant="outline" size="icon-sm" className={base} onClick={() => onAdd?.('short_text')}>
             <CaseSensitive />
           </Button>
-          <Button variant="outline" size="icon-sm" className={base}>
+          {/* <Button variant="outline" size="icon-sm" className={base}>
             <Image />
-          </Button>
+          </Button> */}
           <Button variant="outline" size="icon-sm" className={base}>
             <GalleryVertical />
           </Button>
@@ -46,9 +46,9 @@ export default function InspectorButtons({ onAdd, className, vertical }: Props) 
         <Button variant="outline" size="icon-sm" className={base} onClick={() => onAdd?.('short_text')}>
           <CaseSensitive />
         </Button>
-        <Button variant="outline" size="icon-sm" className={base}>
+        {/* <Button variant="outline" size="icon-sm" className={base}>
           <Image />
-        </Button>
+        </Button> */}
         <Button variant="outline" size="icon-sm" className={base}>
           <GalleryVertical />
         </Button>

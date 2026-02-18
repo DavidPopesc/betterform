@@ -1,7 +1,7 @@
 "use client"
 
 import Image from 'next/image'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import * as React from 'react'
 
 export type Tab = 'questions' | 'responses' | 'send' | 'settings'
@@ -11,7 +11,6 @@ interface TopBarProps {
   activeTab?: Tab
   onTabChange?: (tab: Tab) => void
   isSaving?: boolean
-  lastSavedAt?: Date | null
   isDirty?: boolean
 }
 
@@ -20,9 +19,10 @@ export default function TopBar({
   activeTab = 'questions',
   onTabChange,
   isSaving = false,
-  lastSavedAt = null,
   isDirty = false,
 }: TopBarProps) {
+  const router = useRouter()
+  
   const tabs: { id: Tab; label: string }[] = [
     { id: 'questions', label: 'Questions' },
     { id: 'responses', label: 'Responses' },
@@ -30,24 +30,35 @@ export default function TopBar({
     { id: 'settings', label: 'Settings' },
   ]
 
+  const handleLogoClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    if (isDirty) {
+      const confirmed = window.confirm('You have unsaved changes. Are you sure you want to leave?')
+      if (!confirmed) return
+    }
+    router.push('/dashboard')
+  }
+
   return (
     <header className="sticky top-0 z-50 bg-white border-b">
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex flex-col gap-2 py-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center justify-between gap-4">
-            <Link href="/dashboard" className="inline-flex items-center gap-4">
+            <a 
+              href="/dashboard" 
+              onClick={handleLogoClick}
+              className="inline-flex items-center gap-4 cursor-pointer"
+            >
               <Image src="/betterformlogo.png" width={40} height={40} alt="Better Form logo" />
               <span className="text-2xl font-semibold">{title}</span>
-            </Link>
+            </a>
 
             <div className="text-sm text-muted-foreground md:hidden">
               {isSaving
                 ? 'Saving…'
-                : lastSavedAt
-                ? `Saved ${lastSavedAt.toLocaleTimeString()}`
                 : isDirty
                 ? 'Unsaved changes'
-                : 'All changes saved'}
+                : 'Changes saved'}
             </div>
           </div>
 
@@ -71,11 +82,9 @@ export default function TopBar({
             <div className="text-sm text-muted-foreground hidden md:block">
               {isSaving
                 ? 'Saving…'
-                : lastSavedAt
-                ? `Saved ${lastSavedAt.toLocaleTimeString()}`
                 : isDirty
                 ? 'Unsaved changes'
-                : 'All changes saved'}
+                : 'Changes saved'}
             </div>
           </div>
         </div>
