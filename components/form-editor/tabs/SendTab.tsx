@@ -8,15 +8,18 @@ import { Copy, Download, Code, Mail, Share2, CheckCheck } from 'lucide-react'
 
 interface SendTabProps {
   publicId: string
+  formName: string
 }
 
-export default function SendTab({ publicId }: SendTabProps) {
+export default function SendTab({ publicId, formName }: SendTabProps) {
   const [copied, setCopied] = React.useState(false)
   const [embedCopied, setEmbedCopied] = React.useState(false)
   
   const formUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/f/${publicId}`
   const embedCode = `<iframe src="${formUrl}" width="100%" height="600" frameborder="0"></iframe>`
   const qrImageUrl = `/api/qr?data=${encodeURIComponent(formUrl)}`
+  const safeFormName = (formName || 'Untitled form').trim().replace(/[\\/:*?"<>|]+/g, '-')
+  const qrFileName = `${safeFormName}-Better Form.png`
 
   const copyLink = () => {
     navigator.clipboard.writeText(formUrl)
@@ -41,7 +44,7 @@ export default function SendTab({ publicId }: SendTabProps) {
       
       const link = document.createElement('a')
       link.href = blobUrl
-      link.download = `form-${publicId}-qr.png`
+      link.download = qrFileName
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)

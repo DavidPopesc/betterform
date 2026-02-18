@@ -665,7 +665,7 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
       )}
 
       {activeTab === 'responses' && <ResponsesTab />}
-      {activeTab === 'send' && <SendTab publicId={publicId} />}
+      {activeTab === 'send' && <SendTab publicId={publicId} formName={formName} />}
       {activeTab === 'settings' && <SettingsTab />}
     </>
   )
