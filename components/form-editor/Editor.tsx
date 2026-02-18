@@ -56,9 +56,51 @@ interface EditorProps {
   formId: string
   publicId: string
   initialSchema: { fields?: unknown[]; name?: string; title?: string }
+  initialTheme?: string
 }
 
-export default function Editor({ formId, publicId, initialSchema }: EditorProps) {
+const THEME_COLORS: Record<string, { bg: string; border: string; input: string; button: string; text: string }> = {
+    slate: {
+    bg: 'bg-slate-50',
+    border: 'border-slate-200',
+    input: 'focus:ring-slate-500',
+    button: 'bg-slate-600 hover:bg-slate-700',
+    text: 'text-slate-900',
+  },
+  blue: {
+    bg: 'bg-blue-50',
+    border: 'border-blue-200',
+    input: 'focus:ring-blue-500',
+    button: 'bg-blue-500 hover:bg-blue-600',
+    text: 'text-blue-900',
+  },
+  green: {
+    bg: 'bg-green-50',
+    border: 'border-green-200',
+    input: 'focus:ring-green-500',
+    button: 'bg-green-500 hover:bg-green-600',
+    text: 'text-green-900',
+  },
+  purple: {
+    bg: 'bg-purple-50',
+    border: 'border-purple-200',
+    input: 'focus:ring-purple-500',
+    button: 'bg-purple-500 hover:bg-purple-600',
+    text: 'text-purple-900',
+  },
+  pink: {
+    bg: 'bg-pink-50',
+    border: 'border-pink-200',
+    input: 'focus:ring-pink-500',
+    button: 'bg-pink-500 hover:bg-pink-600',
+    text: 'text-pink-900',
+  },
+
+}
+
+export default function Editor({ formId, publicId, initialSchema, initialTheme = 'slate' }: EditorProps) {
+  const [theme, setTheme] = React.useState(initialTheme)
+  const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [activeTab, setActiveTab] = React.useState<Tab>('questions')
   const [fields, setFields] = React.useState<Field[]>((initialSchema.fields as Field[]) ?? [])
   // form name (stored in DB `name`), and fields (schema) stored separately
@@ -271,6 +313,7 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
         isDirty={isDirty}
       />
       
+      <div className={`min-h-svh ${themeColors.bg}`}>
       {activeTab === 'questions' && (
         <div className="max-w-6xl w-full mx-auto px-4 flex flex-col gap-4 py-8">
           <div className="grid grid-cols-12 gap-4 justify-center items-start">
@@ -782,7 +825,10 @@ export default function Editor({ formId, publicId, initialSchema }: EditorProps)
 
       {activeTab === 'responses' && <ResponsesTab formId={formId} fields={fields} />}
       {activeTab === 'send' && <SendTab publicId={publicId} formName={formName} />}
-      {activeTab === 'settings' && <SettingsTab formId={formId} />}
+      {activeTab === 'settings' && (
+        <SettingsTab formId={formId} theme={theme} onThemeChange={setTheme} />
+      )}
+      </div>
 
       <ImportModal
         isOpen={showImportModal}

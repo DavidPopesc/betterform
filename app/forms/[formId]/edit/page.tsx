@@ -17,11 +17,12 @@ export default async function Page({ params }: { params: { formId?: string } | P
   const schema = (form?.schema as { fields?: unknown[] } | null) ?? { fields: [] }
   const initialSchema = { fields: schema.fields as unknown[], name: form?.name ?? undefined }
   const publicId = form?.publicId ?? formId // fallback to formId if publicId not set yet
+  const theme = form?.theme ?? 'slate'
 
   return (
     <div className="min-h-svh">
       {/* Editor is a client component that manages local state */}
-      <Editor formId={formId} publicId={publicId} initialSchema={initialSchema} />
+      <Editor formId={formId} publicId={publicId} initialSchema={initialSchema} initialTheme={theme} />
     </div>
   )
 }

@@ -23,6 +23,7 @@ export async function GET(
         accountId: true,
         apiEnabled: true,
         apiKey: true,
+        theme: true,
       }
     })
     
@@ -33,6 +34,7 @@ export async function GET(
     return NextResponse.json({
       apiEnabled: form.apiEnabled,
       apiKey: form.apiKey,
+      theme: form.theme,
     })
   } catch (err) {
     console.error('Fetch settings error:', err)
@@ -57,7 +59,7 @@ export async function POST(
     // Verify form ownership
     const form = await prisma.form.findUnique({ 
       where: { id: formId },
-      select: { accountId: true, apiEnabled: true, apiKey: true }
+      select: { accountId: true, apiEnabled: true, apiKey: true, theme: true }
     })
     
     if (!form || form.accountId !== user.id) {
@@ -65,6 +67,19 @@ export async function POST(
     }
 
     const body = await req.json()
+    
+    // Handle theme change
+    if (body.theme !== undefined) {
+      const validThemes = ['blue', 'green', 'purple', 'pink', 'slate']
+      const theme = validThemes.includes(body.theme) ? body.theme : 'blue'
+      
+      await prisma.form.update({
+        where: { id: formId },
+        data: { theme },
+      })
+      
+      return NextResponse.json({ theme })
+    }
     
     // Handle API toggle
     if (body.apiEnabled !== undefined) {

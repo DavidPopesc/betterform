@@ -15,6 +15,7 @@ export default async function PublicFormPage({
       id: true,
       name: true,
       schema: true,
+      theme: true,
     },
   })
 
@@ -24,12 +25,14 @@ export default async function PublicFormPage({
 
   const schema = form.schema as { fields?: any[] }
   const fields = schema.fields || []
+  const theme = form.theme ?? 'slate'
 
   return (
     <PublicForm 
       publicId={publicId} 
       formName={form.name || 'Untitled form'} 
-      fields={fields} 
+      fields={fields}
+      theme={theme}
     />
   )
 }

@@ -48,9 +48,9 @@ export default function FormCard({ form }: { form: FormRecord }) {
   }
 
   return (
-    <Card className="p-0 overflow-hidden group relative">
-      <Link href={`/forms/${form.id}/edit`} className="block">
-        <div className="h-40 w-full rounded-t-md overflow-hidden bg-slate-100">
+    <Card className="p-0 group relative flex flex-col">
+      <Link href={`/forms/${form.id}/edit`} className="block overflow-hidden rounded-t-md">
+        <div className="h-40 w-full bg-slate-100">
           <Image
             src={`https://picsum.photos/seed/${seed}/800/480`}
             alt={title}
@@ -59,7 +59,9 @@ export default function FormCard({ form }: { form: FormRecord }) {
             className="w-full h-full object-cover"
           />
         </div>
-        <div className="p-4">
+      </Link>
+      <div className="relative flex-1 p-4 flex flex-col justify-between">
+        <div>
           <div className="font-semibold">{title}</div>
           {form.updatedAt && (
             <div className="text-sm text-muted-foreground mt-1">
@@ -67,16 +69,15 @@ export default function FormCard({ form }: { form: FormRecord }) {
             </div>
           )}
         </div>
-      </Link>
-
-      <div className="absolute top-2 right-2">
-        <FormCardMenu
-          formId={form.id}
-          formName={title}
-          publicId={form.publicId || ''}
-          onDuplicate={handleDuplicate}
-          onDelete={handleDelete}
-        />
+        <div className="absolute bottom-2 right-2 overflow-visible">
+          <FormCardMenu
+            formId={form.id}
+            formName={title}
+            publicId={form.publicId || ''}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDelete}
+          />
+        </div>
       </div>
     </Card>
   )

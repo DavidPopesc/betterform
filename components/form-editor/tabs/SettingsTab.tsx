@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -8,24 +8,31 @@ import { Copy, RefreshCw } from 'lucide-react'
 
 interface SettingsTabProps {
   formId: string
+  theme: string
+  onThemeChange: (theme: string) => void
 }
 
-export default function SettingsTab({ formId }: SettingsTabProps) {
+const THEMES = [
+  { id: 'slate', label: 'Slate', color: 'bg-slate-500' },
+  { id: 'blue', label: 'Blue', color: 'bg-blue-500' },
+  { id: 'green', label: 'Green', color: 'bg-green-500' },
+  { id: 'purple', label: 'Purple', color: 'bg-purple-500' },
+  { id: 'pink', label: 'Pink', color: 'bg-pink-500' },
+]
+
+export default function SettingsTab({ formId, theme, onThemeChange }: SettingsTabProps) {
   const [apiEnabled, setApiEnabled] = useState(false)
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    loadSettings()
-  }, [formId])
-
-  async function loadSettings() {
+  const loadSettings = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch(`/api/forms/${formId}/settings`)
       if (res.ok) {
         const data = await res.json()
+        onThemeChange(data.theme || 'blue')
         setApiEnabled(data.apiEnabled || false)
         setApiKey(data.apiKey || null)
       }
@@ -33,6 +40,26 @@ export default function SettingsTab({ formId }: SettingsTabProps) {
       console.error('Failed to load settings:', err)
     } finally {
       setLoading(false)
+    }
+  }, [formId, onThemeChange])
+
+  useEffect(() => {
+    loadSettings()
+  }, [loadSettings])
+
+  async function updateTheme(newTheme: string) {
+    onThemeChange(newTheme)
+    setSaving(true)
+    try {
+      await fetch(`/api/forms/${formId}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: newTheme }),
+      })
+    } catch (err) {
+      console.error('Failed to update theme:', err)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -102,6 +129,30 @@ export default function SettingsTab({ formId }: SettingsTabProps) {
             Configure form behavior, notifications, and access controls
           </p>
         </div>
+        
+        <Card className="p-6">
+          <h4 className="font-semibold mb-4">Theme</h4>
+          <p className="text-sm text-muted-foreground mb-4">
+            Choose a color theme for your form
+          </p>
+          <div className="flex gap-3 flex-wrap">
+            {THEMES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => updateTheme(t.id)}
+                disabled={saving}
+                className={`
+                  flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition
+                  ${theme === t.id ? 'border-primary' : 'border-slate-200'}
+                  hover:border-primary disabled:opacity-50
+                `}
+              >
+                <div className={`w-8 h-8 rounded ${t.color}`} />
+                <span className="text-xs font-medium">{t.label}</span>
+              </button>
+            ))}
+          </div>
+        </Card>
         
         <Card className="p-6">
           <h4 className="font-semibold mb-4">JSON API Integration</h4>

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { MoreVertical, Copy, QrCode, Download, Copy as CopyIcon, Trash2 } from 'lucide-react'
@@ -21,13 +21,19 @@ export default function FormCardMenu({
   onDelete,
 }: FormCardMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [formUrl, setFormUrl] = useState('')
 
-  const formUrl = `${window.location.origin}/f/${publicId}`
+  useEffect(() => {
+    setFormUrl(`${window.location.origin}/f/${publicId}`)
+  }, [publicId])
+
   const qrDownloadUrl = `/api/qr?data=${encodeURIComponent(formUrl)}`
 
   function copyLink() {
-    navigator.clipboard.writeText(formUrl)
-    setIsOpen(false)
+    if (formUrl) {
+      navigator.clipboard.writeText(formUrl)
+      setIsOpen(false)
+    }
   }
 
   async function downloadQR() {
@@ -85,7 +91,7 @@ export default function FormCardMenu({
       )}
 
       {isOpen && (
-        <Card className="absolute right-0 top-10 w-48 p-0 z-50 shadow-lg">
+        <Card className="absolute right-0 -top-64 w-48 p-0 z-50 shadow-lg">
           <div className="space-y-1">
             <button
               onClick={copyLink}

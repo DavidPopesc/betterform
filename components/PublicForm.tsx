@@ -19,9 +19,49 @@ interface PublicFormProps {
   publicId: string
   formName: string
   fields: Field[]
+  theme?: string
 }
 
-export default function PublicForm({ publicId, formName, fields }: PublicFormProps) {
+const THEME_COLORS: Record<string, { bg: string; border: string; input: string; button: string; text: string }> = {
+    slate: {
+    bg: 'bg-slate-50',
+    border: 'border-slate-200',
+    input: 'focus:ring-slate-500',
+    button: 'bg-slate-600 hover:bg-slate-700',
+    text: 'text-slate-900',
+  },
+    blue: {
+    bg: 'bg-blue-50',
+    border: 'border-blue-200',
+    input: 'focus:ring-blue-500',
+    button: 'bg-blue-500 hover:bg-blue-600',
+    text: 'text-blue-900',
+  },
+  green: {
+    bg: 'bg-green-50',
+    border: 'border-green-200',
+    input: 'focus:ring-green-500',
+    button: 'bg-green-500 hover:bg-green-600',
+    text: 'text-green-900',
+  },
+  purple: {
+    bg: 'bg-purple-50',
+    border: 'border-purple-200',
+    input: 'focus:ring-purple-500',
+    button: 'bg-purple-500 hover:bg-purple-600',
+    text: 'text-purple-900',
+  },
+  pink: {
+    bg: 'bg-pink-50',
+    border: 'border-pink-200',
+    input: 'focus:ring-pink-500',
+    button: 'bg-pink-500 hover:bg-pink-600',
+    text: 'text-pink-900',
+  },
+}
+
+export default function PublicForm({ publicId, formName, fields, theme = 'slate' }: PublicFormProps) {
+  const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [responses, setResponses] = useState<Record<string, string | string[] | number>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -110,7 +150,7 @@ export default function PublicForm({ publicId, formName, fields }: PublicFormPro
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-slate-50 py-12 px-4">
+      <div className={`min-h-screen ${themeColors.bg} py-12 px-4`}>
         <div className="max-w-2xl mx-auto">
           <Card className="p-8 text-center">
             <div className="text-4xl mb-4">✓</div>
@@ -296,7 +336,7 @@ export default function PublicForm({ publicId, formName, fields }: PublicFormPro
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4">
+    <div className={`min-h-screen ${themeColors.bg} py-12 px-4`}>
       <div className="max-w-2xl mx-auto">
         <Card className="p-8 mb-6">
           <h1 className="text-3xl font-bold mb-2">{formName || 'Untitled form'}</h1>
