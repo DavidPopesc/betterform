@@ -63,7 +63,7 @@ export async function POST(
         oneResponsePerEmail: true,
         oneResponsePerUser: true,
         apiEnabled: true,
-        apiKey: true,
+        submissionApiKey: true,
         webhookUrl: true,
       },
     })
@@ -75,7 +75,7 @@ export async function POST(
     // Verify API key if provided
     const isApiRequest = !!apiKeyFromHeader
     if (isApiRequest) {
-      if (!form.apiEnabled || form.apiKey !== apiKeyFromHeader) {
+      if (!form.apiEnabled || form.submissionApiKey !== apiKeyFromHeader) {
         return NextResponse.json({ error: 'invalid_api_key' }, { status: 401 })
       }
     }
@@ -187,7 +187,7 @@ export async function POST(
     }
 
     // Send webhook notification if configured
-    if (form.webhookUrl && form.apiKey) {
+    if (form.webhookUrl && form.submissionApiKey) {
       const webhookPayload = {
         formId: form.id,
         responseId: response.id,
@@ -197,7 +197,7 @@ export async function POST(
       }
       
       // Send webhook asynchronously (don't wait for it)
-      sendWebhookNotification(form.webhookUrl, webhookPayload, form.apiKey).catch(err => {
+      sendWebhookNotification(form.webhookUrl, webhookPayload, form.submissionApiKey).catch(err => {
         console.error('Webhook notification failed:', err)
       })
     }

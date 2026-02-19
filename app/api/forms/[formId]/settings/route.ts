@@ -24,7 +24,8 @@ export async function GET(
         publicId: true,
         schema: true,
         apiEnabled: true,
-        apiKey: true,
+        submissionApiKey: true,
+        dataApiKey: true,
         webhookUrl: true,
         theme: true,
         isQuiz: true,
@@ -45,7 +46,8 @@ export async function GET(
       publicId: form.publicId,
       schema: form.schema,
       apiEnabled: form.apiEnabled,
-      apiKey: form.apiKey,
+      submissionApiKey: form.submissionApiKey,
+      dataApiKey: form.dataApiKey,
       webhookUrl: form.webhookUrl,
       theme: form.theme,
       isQuiz: form.isQuiz,
@@ -82,7 +84,8 @@ export async function POST(
       select: { 
         accountId: true, 
         apiEnabled: true, 
-        apiKey: true, 
+        submissionApiKey: true,
+        dataApiKey: true,
         webhookUrl: true,
         theme: true, 
         isQuiz: true, 
@@ -141,36 +144,53 @@ export async function POST(
     // Handle API toggle
     if (body.apiEnabled !== undefined) {
       const apiEnabled = Boolean(body.apiEnabled)
-      let apiKey = form.apiKey
+      let submissionApiKey = form.submissionApiKey
+      let dataApiKey = form.dataApiKey
       
-      // Generate new API key if enabling for the first time
-      if (apiEnabled && !apiKey) {
-        apiKey = `bf_${crypto.randomBytes(32).toString('hex')}`
+      // Generate new API keys if enabling for the first time
+      if (apiEnabled && !submissionApiKey) {
+        submissionApiKey = `bf_sub_${crypto.randomBytes(32).toString('hex')}`
+      }
+      if (apiEnabled && !dataApiKey) {
+        dataApiKey = `bf_data_${crypto.randomBytes(32).toString('hex')}`
       }
       
-      // Clear API key if disabling
+      // Clear API keys if disabling
       if (!apiEnabled) {
-        apiKey = null
+        submissionApiKey = null
+        dataApiKey = null
       }
       
       await prisma.form.update({
         where: { id: formId },
-        data: { apiEnabled, apiKey },
+        data: { apiEnabled, submissionApiKey, dataApiKey },
       })
       
-      return NextResponse.json({ apiEnabled, apiKey })
+      return NextResponse.json({ apiEnabled, submissionApiKey, dataApiKey })
     }
     
-    // Handle key regeneration
-    if (body.regenerateKey) {
-      const apiKey = `bf_${crypto.randomBytes(32).toString('hex')}`
+    // Handle submission key regeneration
+    if (body.regenerateSubmissionKey) {
+      const submissionApiKey = `bf_sub_${crypto.randomBytes(32).toString('hex')}`
       
       await prisma.form.update({
         where: { id: formId },
-        data: { apiKey },
+        data: { submissionApiKey },
       })
       
-      return NextResponse.json({ apiKey })
+      return NextResponse.json({ submissionApiKey })
+    }
+    
+    // Handle data key regeneration
+    if (body.regenerateDataKey) {
+      const dataApiKey = `bf_data_${crypto.randomBytes(32).toString('hex')}`
+      
+      await prisma.form.update({
+        where: { id: formId },
+        data: { dataApiKey },
+      })
+      
+      return NextResponse.json({ dataApiKey })
     }
 
     // Handle success message

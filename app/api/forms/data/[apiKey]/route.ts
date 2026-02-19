@@ -18,9 +18,9 @@ export async function GET(
 
     const { default: prisma } = await import('@/lib/db')
     
-    // Find form by API key
+    // Find form by data API key
     const form = await prisma.form.findUnique({
-      where: { apiKey },
+      where: { dataApiKey: apiKey },
       select: {
         id: true,
         name: true,

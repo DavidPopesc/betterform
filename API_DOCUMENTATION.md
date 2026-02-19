@@ -1,6 +1,9 @@
 # BetterForm API Documentation
 
-BetterForm provides three distinct API endpoints for different use cases:
+BetterForm provides three distinct API endpoints for different use cases, with separate API keys for enhanced security:
+
+- **Submission API Key**: Used for external form submissions and webhook signatures
+- **Data Export API Key**: Used for fetching form responses
 
 ## 1. Form Submission API
 
@@ -12,9 +15,9 @@ POST https://betterform.dev/api/submit/{publicId}
 ```
 
 ### Authentication
-Include your API key in the Authorization header:
+Include your **Submission API Key** in the Authorization header:
 ```
-Authorization: Bearer {your-api-key}
+Authorization: Bearer {your-submission-api-key}
 ```
 
 ### Request Body
@@ -41,7 +44,7 @@ fetch('https://betterform.dev/api/submit/{publicId}', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer bf_your_api_key_here'
+    'Authorization': 'Bearer bf_sub_your_submission_key_here'
   },
   body: JSON.stringify({
     responses: {
@@ -81,14 +84,14 @@ Set your webhook URL in the form's API settings. BetterForm will POST to this UR
 ```
 
 ### Signature Verification
-Each webhook request includes an `X-BetterForm-Signature` header containing an HMAC-SHA256 signature of the payload, signed with your API key.
+Each webhook request includes an `X-BetterForm-Signature` header containing an HMAC-SHA256 signature of the payload, signed with your **Submission API Key**.
 
 ```javascript
 const crypto = require('crypto');
 
-function verifyWebhook(payload, signature, apiKey) {
+function verifyWebhook(payload, signature, submissionApiKey) {
   const expectedSignature = crypto
-    .createHmac('sha256', apiKey)
+    .createHmac('sha256', submissionApiKey)
     .update(JSON.stringify(payload))
     .digest('hex');
   
@@ -102,7 +105,7 @@ app.post('/webhook', express.json(), (req, res) => {
   const signature = req.headers['x-betterform-signature'];
   const payload = req.body;
   
-  if (!verifyWebhook(payload, signature, process.env.BETTERFORM_API_KEY)) {
+  if (!verifyWebhook(payload, signature, process.env.BETTERFORM_SUBMISSION_API_KEY)) {
     return res.status(401).send('Invalid signature');
   }
   
@@ -122,11 +125,11 @@ Fetch all responses for a form in JSON format.
 
 ### Endpoint
 ```
-GET https://betterform.dev/api/forms/data/{apiKey}
+GET https://betterform.dev/api/forms/data/{dataApiKey}
 ```
 
 ### Authentication
-The API key is included in the URL path.
+The **Data Export API Key** is included in the URL path.
 
 ### Rate Limiting
 - Limited to 1 request per 5 seconds per form
@@ -157,7 +160,7 @@ The API key is included in the URL path.
 
 ### Example
 ```javascript
-fetch('https://betterform.dev/api/forms/data/bf_your_api_key_here', {
+fetch('https://betterform.dev/api/forms/data/bf_data_your_data_key_here', {
   method: 'GET',
   headers: {
     'Accept': 'application/json'
@@ -183,21 +186,35 @@ fetch('https://betterform.dev/api/forms/data/bf_your_api_key_here', {
 
 ## API Key Management
 
-### Generating an API Key
+### Generating API Keys
 1. Go to your form's Settings tab
 2. Enable "API Integration"
-3. Your API key will be automatically generated
+3. Two API keys will be automatically generated:
+   - **Submission API Key** (starts with `bf_sub_`)
+   - **Data Export API Key** (starts with `bf_data_`)
 
-### Regenerating an API Key
-Click the refresh button next to your API key. **Warning:** This will invalidate your old API key immediately.
+### Regenerating API Keys
+Each API key has its own refresh button. Click the refresh icon next to the key you want to regenerate. 
+
+**Warning:** Regenerating a key will invalidate the old key immediately.
+
+### Why Separate Keys?
+
+Separate API keys provide better security:
+- **Submission Key**: Share with external services that need to submit data to your forms
+- **Data Export Key**: Keep private for internal systems that need to read form responses
+
+If a submission key is compromised, you can regenerate it without affecting your data export integrations, and vice versa.
 
 ### Security Best Practices
 - Never commit API keys to version control
 - Store API keys in environment variables
+- Use separate keys for different purposes
 - Rotate API keys periodically
 - Verify webhook signatures to prevent spoofing
 - Use HTTPS for all API requests
 - Monitor API usage for suspicious activity
+- Regenerate keys immediately if compromised
 
 ---
 

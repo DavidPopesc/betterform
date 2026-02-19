@@ -27,7 +27,8 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const [isQuiz, setIsQuiz] = useState(false)
   const [showScore, setShowScore] = useState(false)
   const [apiEnabled, setApiEnabled] = useState(false)
-  const [apiKey, setApiKey] = useState<string | null>(null)
+  const [submissionApiKey, setSubmissionApiKey] = useState<string | null>(null)
+  const [dataApiKey, setDataApiKey] = useState<string | null>(null)
   const [webhookUrl, setWebhookUrl] = useState<string>('')
   const [responsesEnabled, setResponsesEnabled] = useState(true)
   const [responseDeadline, setResponseDeadline] = useState<string>('')
@@ -72,7 +73,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer ${apiKey}'
+    'Authorization': 'Bearer ${submissionApiKey}'
   },
   body: JSON.stringify({
     responses: {${responsesExample}}
@@ -102,7 +103,8 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         setIsQuiz(data.isQuiz || false)
         setShowScore(data.showScore || false)
         setApiEnabled(data.apiEnabled || false)
-        setApiKey(data.apiKey || null)
+        setSubmissionApiKey(data.submissionApiKey || null)
+        setDataApiKey(data.dataApiKey || null)
         setWebhookUrl(data.webhookUrl || '')
         setResponsesEnabled(data.responsesEnabled !== undefined ? data.responsesEnabled : true)
         setResponseDeadline(data.responseDeadline ? new Date(data.responseDeadline).toISOString().slice(0, 16) : '')
@@ -235,7 +237,8 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
       if (res.ok) {
         const data = await res.json()
         setApiEnabled(data.apiEnabled)
-        setApiKey(data.apiKey)
+        setSubmissionApiKey(data.submissionApiKey)
+        setDataApiKey(data.dataApiKey)
       }
     } catch (err) {
       console.error('Failed to toggle API:', err)
@@ -244,31 +247,59 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     }
   }
 
-  async function regenerateKey() {
-    if (!confirm('Are you sure? This will invalidate your current API key.')) return
+  async function regenerateSubmissionKey() {
+    if (!confirm('Are you sure? This will invalidate your current submission API key.')) return
     
     setSaving(true)
     try {
       const res = await fetch(`/api/forms/${formId}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ regenerateKey: true }),
+        body: JSON.stringify({ regenerateSubmissionKey: true }),
       })
       
       if (res.ok) {
         const data = await res.json()
-        setApiKey(data.apiKey)
+        setSubmissionApiKey(data.submissionApiKey)
       }
     } catch (err) {
-      console.error('Failed to regenerate key:', err)
+      console.error('Failed to regenerate submission key:', err)
     } finally {
       setSaving(false)
     }
   }
 
-  function copyKey() {
-    if (apiKey) {
-      navigator.clipboard.writeText(apiKey)
+  async function regenerateDataKey() {
+    if (!confirm('Are you sure? This will invalidate your current data API key.')) return
+    
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/forms/${formId}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regenerateDataKey: true }),
+      })
+      
+      if (res.ok) {
+        const data = await res.json()
+        setDataApiKey(data.dataApiKey)
+      }
+    } catch (err) {
+      console.error('Failed to regenerate data key:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function copySubmissionKey() {
+    if (submissionApiKey) {
+      navigator.clipboard.writeText(submissionApiKey)
+    }
+  }
+
+  function copyDataKey() {
+    if (dataApiKey) {
+      navigator.clipboard.writeText(dataApiKey)
     }
   }
 
@@ -534,37 +565,70 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
             </label>
           </div>
 
-          {apiEnabled && apiKey && (
+          {apiEnabled && submissionApiKey && dataApiKey && (
             <div className="space-y-6 border-t pt-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">API Key</label>
-                <div className="flex gap-2">
-                  <Input
-                    value={apiKey}
-                    readOnly
-                    className="font-mono text-sm"
-                  />
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={copyKey}
-                    title="Copy API key"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={regenerateKey}
-                    disabled={saving}
-                    title="Regenerate API key"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                  </Button>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Submission API Key</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={submissionApiKey}
+                      readOnly
+                      className="font-mono text-sm"
+                    />
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={copySubmissionKey}
+                      title="Copy submission API key"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={regenerateSubmissionKey}
+                      disabled={saving}
+                      title="Regenerate submission API key"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Used for external form submissions and webhook signatures
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Keep this key secure. Anyone with this key can submit responses or access your form data.
-                </p>
+
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Data Export API Key</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={dataApiKey}
+                      readOnly
+                      className="font-mono text-sm"
+                    />
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={copyDataKey}
+                      title="Copy data API key"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={regenerateDataKey}
+                      disabled={saving}
+                      title="Regenerate data API key"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Used for fetching form responses via API
+                  </p>
+                </div>
               </div>
 
               {/* API 1: Form Submission */}
@@ -609,7 +673,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
                     onChange={(e) => setWebhookUrl(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    BetterForm will POST to this URL when a new response is submitted
+                    Better Form will POST to this URL when a new response is submitted
                   </p>
                 </div>
 
@@ -639,14 +703,14 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">Endpoint</label>
                   <code className="text-xs bg-white px-2 py-1 rounded block mt-1 break-all">
-                    GET https://betterform.dev/api/forms/data/{apiKey}
+                    GET https://betterform.dev/api/forms/data/{dataApiKey}
                   </code>
                 </div>
 
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">Example Request</label>
                   <pre className="text-xs bg-white p-3 rounded mt-1 overflow-x-auto">
-{`fetch('https://betterform.dev/api/forms/data/${apiKey}', {
+{`fetch('https://betterform.dev/api/forms/data/${dataApiKey}', {
   method: 'GET',
   headers: {
     'Accept': 'application/json'
