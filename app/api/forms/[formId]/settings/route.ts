@@ -21,8 +21,10 @@ export async function GET(
       where: { id: formId },
       select: { 
         accountId: true,
+        publicId: true,
         apiEnabled: true,
         apiKey: true,
+        webhookUrl: true,
         theme: true,
         isQuiz: true,
         showScore: true,
@@ -39,8 +41,10 @@ export async function GET(
     }
 
     return NextResponse.json({
+      publicId: form.publicId,
       apiEnabled: form.apiEnabled,
       apiKey: form.apiKey,
+      webhookUrl: form.webhookUrl,
       theme: form.theme,
       isQuiz: form.isQuiz,
       showScore: form.showScore,
@@ -77,6 +81,7 @@ export async function POST(
         accountId: true, 
         apiEnabled: true, 
         apiKey: true, 
+        webhookUrl: true,
         theme: true, 
         isQuiz: true, 
         showScore: true, 
@@ -224,6 +229,18 @@ export async function POST(
       })
       
       return NextResponse.json({ oneResponsePerUser })
+    }
+
+    // Handle webhook URL
+    if (body.webhookUrl !== undefined) {
+      const webhookUrl = body.webhookUrl ? String(body.webhookUrl).slice(0, 500) : null
+      
+      await prisma.form.update({
+        where: { id: formId },
+        data: { webhookUrl },
+      })
+      
+      return NextResponse.json({ webhookUrl })
     }
 
     return NextResponse.json({ error: 'invalid_request' }, { status: 400 })

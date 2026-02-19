@@ -22,10 +22,12 @@ const THEMES = [
 ]
 
 export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeChange }: SettingsTabProps) {
+  const [publicId, setPublicId] = useState<string>('')
   const [isQuiz, setIsQuiz] = useState(false)
   const [showScore, setShowScore] = useState(false)
   const [apiEnabled, setApiEnabled] = useState(false)
   const [apiKey, setApiKey] = useState<string | null>(null)
+  const [webhookUrl, setWebhookUrl] = useState<string>('')
   const [responsesEnabled, setResponsesEnabled] = useState(true)
   const [responseDeadline, setResponseDeadline] = useState<string>('')
   const [oneResponsePerEmail, setOneResponsePerEmail] = useState(false)
@@ -34,6 +36,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const successMessageTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const webhookUrlTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const loadSettings = useCallback(async () => {
     setLoading(true)
@@ -41,11 +44,13 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
       const res = await fetch(`/api/forms/${formId}/settings`)
       if (res.ok) {
         const data = await res.json()
+        setPublicId(data.publicId || formId)
         onThemeChange(data.theme || 'blue')
         setIsQuiz(data.isQuiz || false)
         setShowScore(data.showScore || false)
         setApiEnabled(data.apiEnabled || false)
         setApiKey(data.apiKey || null)
+        setWebhookUrl(data.webhookUrl || '')
         setResponsesEnabled(data.responsesEnabled !== undefined ? data.responsesEnabled : true)
         setResponseDeadline(data.responseDeadline ? new Date(data.responseDeadline).toISOString().slice(0, 16) : '')
         setOneResponsePerEmail(data.oneResponsePerEmail || false)
@@ -87,6 +92,32 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
       }
     }
   }, [successMessage, formId])
+
+  // Debounce webhook URL updates
+  useEffect(() => {
+    if (webhookUrlTimeoutRef.current) {
+      clearTimeout(webhookUrlTimeoutRef.current)
+    }
+
+    webhookUrlTimeoutRef.current = setTimeout(async () => {
+      if (!apiEnabled) return // Only save if API is enabled
+      try {
+        await fetch(`/api/forms/${formId}/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ webhookUrl }),
+        })
+      } catch (err) {
+        console.error('Failed to update webhook URL:', err)
+      }
+    }, 1500) // Wait 1.5 seconds after last keystroke
+
+    return () => {
+      if (webhookUrlTimeoutRef.current) {
+        clearTimeout(webhookUrlTimeoutRef.current)
+      }
+    }
+  }, [webhookUrl, formId, apiEnabled])
 
   async function updateTheme(newTheme: string) {
     onThemeChange(newTheme)
@@ -430,14 +461,14 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         </Card>
         
         <Card className="p-6">
-          <h4 className="font-semibold mb-4">JSON API Integration</h4>
+          <h4 className="font-semibold mb-4">API Integration</h4>
           <p className="text-sm text-muted-foreground mb-4">
-            Enable API access to receive form responses via webhook or direct API calls
+            Enable API access to submit responses, receive webhooks, or fetch form data
           </p>
 
           <div className="flex items-center gap-4 mb-6">
             <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <span className="text-muted-foreground">API Integration</span>
+              <span className="text-muted-foreground">Enable API</span>
               <input
                 type="checkbox"
                 checked={apiEnabled}
@@ -451,7 +482,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
           </div>
 
           {apiEnabled && apiKey && (
-            <div className="space-y-4 border-t pt-4">
+            <div className="space-y-6 border-t pt-4">
               <div>
                 <label className="text-sm font-medium mb-2 block">API Key</label>
                 <div className="flex gap-2">
@@ -478,15 +509,136 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
                     <RefreshCw className="w-4 h-4" />
                   </Button>
                 </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Keep this key secure. Anyone with this key can submit responses or access your form data.
+                </p>
               </div>
 
-              <div className="bg-slate-50 p-4 rounded text-sm">
-                <p className="font-medium mb-2">API Endpoint</p>
-                <code className="text-xs bg-white px-2 py-1 rounded block mb-3">
-                  POST https://betterform.dev/api/forms/{formId}/webhook
-                </code>
-                <p className="text-muted-foreground text-xs">
-                  Include the API key in the Authorization header: <code className="bg-white px-1">Bearer {'{'}your-api-key{'}'}</code>
+              {/* API 1: Form Submission */}
+              <div className="bg-slate-50 p-4 rounded-md space-y-3">
+                <div>
+                  <p className="font-medium text-sm mb-1">1. External Form Submission API</p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Submit responses from your own website forms directly to BetterForm
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Endpoint</label>
+                  <code className="text-xs bg-white px-2 py-1 rounded block mt-1 break-all">
+                    POST https://betterform.dev/api/submit/{publicId || formId}
+                  </code>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Example Request</label>
+                  <pre className="text-xs bg-white p-3 rounded mt-1 overflow-x-auto">
+{`fetch('https://betterform.dev/api/submit/${publicId || formId}', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ${apiKey}'
+  },
+  body: JSON.stringify({
+    responses: {
+      // Your field IDs and values
+    }
+  })
+})`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* API 2: Webhook */}
+              <div className="bg-slate-50 p-4 rounded-md space-y-3">
+                <div>
+                  <p className="font-medium text-sm mb-1">2. Webhook Notifications</p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Receive real-time notifications when someone submits a response
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Webhook URL (your server)</label>
+                  <Input
+                    placeholder="https://your-site.com/webhook"
+                    className="text-xs mt-1"
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    BetterForm will POST to this URL when a new response is submitted
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Webhook Payload</label>
+                  <pre className="text-xs bg-white p-3 rounded mt-1 overflow-x-auto">
+{`{
+  "formId": "${formId}",
+  "responseId": "resp_...",
+  "responses": { ... },
+  "submittedAt": "2026-02-19T...",
+  "signature": "sha256_hash..."
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* API 3: Data Fetch */}
+              <div className="bg-slate-50 p-4 rounded-md space-y-3">
+                <div>
+                  <p className="font-medium text-sm mb-1">3. Fetch Form Responses API</p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Retrieve all form responses in JSON format (rate limited to once per 5 seconds)
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Endpoint</label>
+                  <code className="text-xs bg-white px-2 py-1 rounded block mt-1 break-all">
+                    GET https://betterform.dev/api/forms/data/{apiKey}
+                  </code>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Example Request</label>
+                  <pre className="text-xs bg-white p-3 rounded mt-1 overflow-x-auto">
+{`fetch('https://betterform.dev/api/forms/data/${apiKey}', {
+  method: 'GET',
+  headers: {
+    'Accept': 'application/json'
+  }
+})`}
+                  </pre>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Response Format</label>
+                  <pre className="text-xs bg-white p-3 rounded mt-1 overflow-x-auto">
+{`{
+  "formId": "${formId}",
+  "formName": "...",
+  "totalResponses": 42,
+  "responses": [
+    {
+      "id": "resp_...",
+      "createdAt": "2026-02-19T...",
+      "data": { ... }
+    }
+  ]
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 p-3 rounded text-xs text-blue-900">
+                <p className="font-medium mb-1">API Documentation</p>
+                <p>
+                  For complete API documentation, visit{' '}
+                  <a href="/docs/api" className="underline font-medium">
+                    betterform.dev/docs/api
+                  </a>
                 </p>
               </div>
             </div>

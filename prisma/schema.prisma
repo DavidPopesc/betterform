@@ -88,6 +88,7 @@ model Form {
   // API integration settings
   apiEnabled Boolean @default(false)
   apiKey     String? @unique
+  webhookUrl String?
 
   // optional normalized field rows for queries / admin tooling
   fields    FormField[]

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import crypto from 'crypto'
 import { 
   getOrCreateFormAccountId, 
   getClientIp, 
@@ -8,6 +9,32 @@ import {
   hasEmailSubmitted,
   getVerifiedEmails 
 } from '@/lib/form-account'
+
+// Helper to send webhook notification
+async function sendWebhookNotification(webhookUrl: string, payload: unknown, apiKey: string) {
+  try {
+    // Create signature for webhook verification
+    const signature = crypto
+      .createHmac('sha256', apiKey)
+      .update(JSON.stringify(payload))
+      .digest('hex')
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-BetterForm-Signature': signature,
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      console.error('Webhook delivery failed:', response.status, response.statusText)
+    }
+  } catch (err) {
+    console.error('Webhook notification error:', err)
+  }
+}
 
 export async function POST(
   req: Request,
@@ -20,6 +47,10 @@ export async function POST(
       return NextResponse.json({ error: 'invalid_public_id' }, { status: 400 })
     }
 
+    // Check for API key authentication
+    const authHeader = req.headers.get('authorization')
+    const apiKeyFromHeader = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null
+
     // Find form by publicId
     const { default: prisma } = await import('@/lib/db')
     const form = await prisma.form.findUnique({
@@ -31,11 +62,22 @@ export async function POST(
         responseDeadline: true,
         oneResponsePerEmail: true,
         oneResponsePerUser: true,
+        apiEnabled: true,
+        apiKey: true,
+        webhookUrl: true,
       },
     })
 
     if (!form) {
       return NextResponse.json({ error: 'form_not_found' }, { status: 404 })
+    }
+
+    // Verify API key if provided
+    const isApiRequest = !!apiKeyFromHeader
+    if (isApiRequest) {
+      if (!form.apiEnabled || form.apiKey !== apiKeyFromHeader) {
+        return NextResponse.json({ error: 'invalid_api_key' }, { status: 401 })
+      }
     }
 
     // Check if form is accepting responses
@@ -60,32 +102,38 @@ export async function POST(
       return NextResponse.json({ error: 'invalid_response_data' }, { status: 400 })
     }
 
-    // Get or create form account ID
-    const formAccountId = await getOrCreateFormAccountId()
+    // For API requests, skip form account tracking
+    let formAccountId = null
+    let ip = null
 
-    // Get client IP and device metrics
-    const ip = getClientIp(req.headers)
-    const deviceMetrics = getDeviceMetrics(req.headers)
+    if (!isApiRequest) {
+      // Get or create form account ID
+      formAccountId = await getOrCreateFormAccountId()
 
-    // Update form account tracking
-    await updateFormAccountTracking(formAccountId, {
-      ip,
-      deviceMetrics,
-      formViewed: form.id,
-    })
+      // Get client IP and device metrics
+      ip = getClientIp(req.headers)
+      const deviceMetrics = getDeviceMetrics(req.headers)
+
+      // Update form account tracking
+      await updateFormAccountTracking(formAccountId, {
+        ip,
+        deviceMetrics,
+        formViewed: form.id,
+      })
+    }
 
     // Extract email from responses (check for email field)
     const schema = form.schema as { fields?: Array<{ id: string; type: string }> }
     const emailField = schema.fields?.find(f => f.type === 'email')
     const respondentEmail = emailField ? String(responses[emailField.id] || '').toLowerCase().trim() : null
 
-    // Check if email field requires verification
-    if (emailField && respondentEmail) {
+    // Check if email field requires verification (only for non-API requests)
+    if (!isApiRequest && emailField && respondentEmail) {
       const emailFieldSettings = schema.fields?.find(f => f.id === emailField.id) as { requireVerifiedEmail?: boolean } | undefined
       
       if (emailFieldSettings?.requireVerifiedEmail) {
         // Check if email is verified
-        const verifiedEmails = await getVerifiedEmails(formAccountId)
+        const verifiedEmails = await getVerifiedEmails(formAccountId!)
         const isVerified = verifiedEmails.some(e => e.toLowerCase().trim() === respondentEmail)
         
         if (!isVerified) {
@@ -97,8 +145,8 @@ export async function POST(
       }
     }
 
-    // Check one response per user (form account)
-    if (form.oneResponsePerUser) {
+    // Check one response per user (form account) - only for non-API requests
+    if (!isApiRequest && form.oneResponsePerUser && formAccountId) {
       const hasSubmitted = await hasFormAccountSubmitted(formAccountId, form.id)
       if (hasSubmitted) {
         return NextResponse.json({ 
@@ -131,10 +179,28 @@ export async function POST(
       },
     })
 
-    // Track submission in form account
-    await updateFormAccountTracking(formAccountId, {
-      formSubmitted: form.id,
-    })
+    // Track submission in form account (for non-API requests)
+    if (!isApiRequest && formAccountId) {
+      await updateFormAccountTracking(formAccountId, {
+        formSubmitted: form.id,
+      })
+    }
+
+    // Send webhook notification if configured
+    if (form.webhookUrl && form.apiKey) {
+      const webhookPayload = {
+        formId: form.id,
+        responseId: response.id,
+        responses,
+        respondentEmail,
+        submittedAt: response.createdAt,
+      }
+      
+      // Send webhook asynchronously (don't wait for it)
+      sendWebhookNotification(form.webhookUrl, webhookPayload, form.apiKey).catch(err => {
+        console.error('Webhook notification failed:', err)
+      })
+    }
 
     return NextResponse.json({ 
       success: true, 
