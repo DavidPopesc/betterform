@@ -23,6 +23,7 @@ const THEMES = [
 
 export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeChange }: SettingsTabProps) {
   const [publicId, setPublicId] = useState<string>('')
+  const [formFields, setFormFields] = useState<Array<{ id: string; label: string; type: string }>>([])
   const [isQuiz, setIsQuiz] = useState(false)
   const [showScore, setShowScore] = useState(false)
   const [apiEnabled, setApiEnabled] = useState(false)
@@ -38,6 +39,47 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const successMessageTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const webhookUrlTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Generate example field values for API documentation
+  const generateFieldExample = (field: { id: string; label: string; type: string }): string => {
+    switch (field.type) {
+      case 'email': return 'user@example.com'
+      case 'number': return '42'
+      case 'phone': return '+1234567890'
+      case 'date': return '2026-02-19'
+      case 'time': return '14:30'
+      case 'rating': return '5'
+      case 'linear_scale': return '7'
+      case 'multiple_choice': return 'Option A'
+      case 'dropdown': return 'Option B'
+      case 'checkboxes': return '["Option 1", "Option 2"]'
+      default: return `Example ${field.label}`
+    }
+  }
+
+  const getApiExampleCode = () => {
+    let responsesExample = ''
+    if (formFields.length > 0) {
+      const exampleFields = formFields.slice(0, 3).map(f => 
+        `      "${f.id}": "${generateFieldExample(f)}"`
+      ).join(',\n')
+      const moreFieldsNote = formFields.length > 3 ? ',\n      // ... more fields' : ''
+      responsesExample = '\n' + exampleFields + moreFieldsNote + '\n    '
+    } else {
+      responsesExample = '\n      // Add your field IDs and values here\n    '
+    }
+
+    return `fetch('https://betterform.dev/api/submit/${publicId || formId}', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ${apiKey}'
+  },
+  body: JSON.stringify({
+    responses: {${responsesExample}}
+  })
+})`
+  }
+
   const loadSettings = useCallback(async () => {
     setLoading(true)
     try {
@@ -45,6 +87,17 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
       if (res.ok) {
         const data = await res.json()
         setPublicId(data.publicId || formId)
+        
+        // Extract fields from schema
+        if (data.schema?.fields) {
+          const fields = data.schema.fields.map((f: { id: string; label: string; type: string }) => ({
+            id: f.id,
+            label: f.label || 'Untitled',
+            type: f.type
+          }))
+          setFormFields(fields)
+        }
+        
         onThemeChange(data.theme || 'blue')
         setIsQuiz(data.isQuiz || false)
         setShowScore(data.showScore || false)
@@ -533,18 +586,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">Example Request</label>
                   <pre className="text-xs bg-white p-3 rounded mt-1 overflow-x-auto">
-{`fetch('https://betterform.dev/api/submit/${publicId || formId}', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer ${apiKey}'
-  },
-  body: JSON.stringify({
-    responses: {
-      // Your field IDs and values
-    }
-  })
-})`}
+{getApiExampleCode()}
                   </pre>
                 </div>
               </div>

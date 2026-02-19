@@ -22,6 +22,7 @@ export async function GET(
       select: { 
         accountId: true,
         publicId: true,
+        schema: true,
         apiEnabled: true,
         apiKey: true,
         webhookUrl: true,
@@ -42,6 +43,7 @@ export async function GET(
 
     return NextResponse.json({
       publicId: form.publicId,
+      schema: form.schema,
       apiEnabled: form.apiEnabled,
       apiKey: form.apiKey,
       webhookUrl: form.webhookUrl,
