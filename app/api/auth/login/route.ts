@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server"
 import { verifyPassword } from "@/lib/auth"
+import { sendLoginApprovalEmail } from "@/lib/email"
 import crypto from "crypto"
-
-function sha256Hex(input: string) {
-  return crypto.createHash("sha256").update(input).digest("hex")
-}
 
 export async function POST(req: Request) {
   try {
@@ -26,18 +23,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Please verify your email before signing in" }, { status: 403 })
     }
 
-    // create session token
-    const token = crypto.randomBytes(32).toString("hex")
-    const tokenHash = sha256Hex(token)
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 730) // 730 days (2 years)
+    const approvalId = crypto.randomUUID()
+    await sendLoginApprovalEmail(user.id, user.email, approvalId)
 
-    await prisma.session.create({ data: { userId: user.id, tokenHash, expiresAt } })
-
-    const res = NextResponse.json({ ok: true })
-    // set cookie (10 years)
-    res.cookies.set({ name: "bf_session", value: token, httpOnly: true, path: "/", sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 60 * 60 * 24 * 365 * 10 })
-
-    return res
+    return NextResponse.json({ ok: true, pendingApproval: true, approvalId, email: user.email })
   } catch (err) {
     console.error(err)
     return NextResponse.json({ error: "Server error" }, { status: 500 })

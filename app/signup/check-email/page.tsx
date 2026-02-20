@@ -194,23 +194,23 @@ export default function SignupCheckEmailPage() {
               : `We sent a verification link to ${email}. Open it and choose “Yes, this was me”.`}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-5">
           {pollError ? <p className="text-destructive text-sm">{pollError}</p> : null}
 
           {verified ? (
-            <>
+            <div className="space-y-3">
               <Button onClick={setupPasskey} disabled={submitting}>
                 {submitting ? "Processing..." : "Set up passkey"}
               </Button>
               <Button type="button" variant="outline" onClick={() => finalizeSignup()} disabled={submitting}>
                 Continue without passkey
               </Button>
-            </>
+            </div>
           ) : (
             <Button type="button" variant="outline" onClick={() => router.push("/signup")}>Back</Button>
           )}
 
-          {passkeyError ? <p className="text-destructive text-sm">{passkeyError}</p> : null}
+          {passkeyError ? <p className="text-destructive text-sm pt-1">{passkeyError}</p> : null}
         </CardContent>
       </Card>
     </div>

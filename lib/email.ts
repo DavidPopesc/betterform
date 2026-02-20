@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { Resend } from "resend";
+import { createLoginApproval } from "@/lib/login-approval";
 // prisma is imported lazily inside functions to avoid cold-start overhead
 const resend = new Resend(process.env.RESEND_API_KEY || "");
 
@@ -56,6 +57,50 @@ export async function sendVerificationEmail(userId: string, userEmail: string) {
   return { sent: true, expiresAt };
 }
 
+export async function sendLoginApprovalEmail(userId: string, userEmail: string, approvalId: string) {
+  const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = sha256Hex(token);
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 15); // 15m
+
+  await createLoginApproval({
+    id: approvalId,
+    userId,
+    tokenHash,
+    expiresAt,
+  })
+
+  const verifyUrl = `${APP_URL}/verify-login?t=${token}&aid=${approvalId}`
+
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: userEmail,
+    subject: "Approve your Better Form sign in",
+    html: `
+      <div style="background:#f8fafc;padding:24px;font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;">
+        <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+          <div style="padding:24px 24px 8px 24px;">
+            <p style="margin:0;font-size:13px;line-height:20px;color:#64748b;">Better Form</p>
+            <h1 style="margin:8px 0 0 0;font-size:22px;line-height:30px;font-weight:600;color:#0f172a;">Approve sign in request</h1>
+          </div>
+          <div style="padding:16px 24px 0 24px;font-size:15px;line-height:24px;color:#334155;">
+            <p style="margin:0 0 14px 0;">You attempted to sign in with <strong>${userEmail}</strong>.</p>
+            <p style="margin:0 0 18px 0;">Open this page and choose <strong>Yes, this was me</strong> to continue sign in.</p>
+          </div>
+          <div style="padding:0 24px 24px 24px;">
+            <a href="${verifyUrl}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:8px;font-size:14px;font-weight:600;">Review sign in request</a>
+            <p style="margin:14px 0 0 0;font-size:12px;line-height:18px;color:#64748b;word-break:break-all;">${verifyUrl}</p>
+          </div>
+          <div style="border-top:1px solid #e2e8f0;padding:14px 24px 20px 24px;">
+            <p style="margin:0;font-size:12px;line-height:18px;color:#64748b;">If this wasn’t you, choose <strong>No, this was not me</strong>. This link expires in 15 minutes.</p>
+          </div>
+        </div>
+      </div>
+    `,
+  })
+
+  return { sent: true, expiresAt, approvalId }
+}
+
 export async function verifyEmailToken(userId: string, presentedToken: string) {
   const tokenHash = sha256Hex(presentedToken);
   const { default: _prisma } = await import('./db')
@@ -70,6 +115,6 @@ export async function verifyEmailToken(userId: string, presentedToken: string) {
   return { ok: true };
 }
 
-const emailService = { sendVerificationEmail, verifyEmailToken };
+const emailService = { sendVerificationEmail, sendLoginApprovalEmail, verifyEmailToken };
 
 export default emailService;
