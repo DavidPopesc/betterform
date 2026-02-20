@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^6.0.0",
+    "base64url": "^3.0.1",
     "@prisma/adapter-pg": "^7.4.0",
     "@prisma/client": "^7.4.0",
     "@types/qrcode": "^1.5.6",

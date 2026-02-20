@@ -54,6 +54,8 @@ model Account {
   emailVerifications EmailVerification[]
   passwordResets     PasswordReset[]
   authEvents         AuthEvent[]
+  // WebAuthn / Passkeys
+  passkeys           PasskeyCredential[]
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -213,6 +215,42 @@ model AuthEvent {
 
   @@index([userId])
   @@index([createdAt])
+}
+
+model PasskeyCredential {
+  id           String   @id @default(uuid())
+  userId       String
+  user         Account  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // The raw credential ID produced by the authenticator (base64)
+  credentialId String   @unique
+
+  // Stored credential public key (base64) for verifying assertions
+  publicKey    String
+
+  // Stored signature counter from the authenticator
+  signCount    Int      @default(0)
+
+  // Entire attestation/metadata stored as JSON for later verification/insight
+  metadata     Json?
+
+  transports   String[]   @default([])
+
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+model WebAuthnChallenge {
+  id        String   @id @default(uuid())
+  userId    String?
+  // base64 challenge sent to client
+  challenge String
+  type      String   // 'registration' | 'assertion'
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model FormAccountUUID {

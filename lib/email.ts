@@ -29,11 +29,27 @@ export async function sendVerificationEmail(userId: string, userEmail: string) {
   await resend.emails.send({
     from: FROM_EMAIL,
     to: userEmail,
-    subject: "Verify your email",
+    subject: "Confirm your Better Form sign up",
     html: `
-      <p>Please verify your email by clicking the link below:</p>
-      <p><a href="${verifyUrl}">Verify email</a></p>
-      <p>If you didn't request this, you can ignore this email.</p>
+      <div style="background:#f8fafc;padding:24px;font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;">
+        <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+          <div style="padding:24px 24px 8px 24px;">
+            <p style="margin:0;font-size:13px;line-height:20px;color:#64748b;">Better Form</p>
+            <h1 style="margin:8px 0 0 0;font-size:22px;line-height:30px;font-weight:600;color:#0f172a;">Verify your email address</h1>
+          </div>
+          <div style="padding:16px 24px 0 24px;font-size:15px;line-height:24px;color:#334155;">
+            <p style="margin:0 0 14px 0;">You requested to create a Better Form account with <strong>${userEmail}</strong>.</p>
+            <p style="margin:0 0 18px 0;">Open the verification page and choose <strong>Yes, this was me</strong> to finish sign up.</p>
+          </div>
+          <div style="padding:0 24px 24px 24px;">
+            <a href="${verifyUrl}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:8px;font-size:14px;font-weight:600;">Review sign up request</a>
+            <p style="margin:14px 0 0 0;font-size:12px;line-height:18px;color:#64748b;word-break:break-all;">${verifyUrl}</p>
+          </div>
+          <div style="border-top:1px solid #e2e8f0;padding:14px 24px 20px 24px;">
+            <p style="margin:0;font-size:12px;line-height:18px;color:#64748b;">If this wasn’t you, choose <strong>No, this was not me</strong> on the verification page. This link expires in 24 hours.</p>
+          </div>
+        </div>
+      </div>
     `,
   });
 
@@ -54,4 +70,6 @@ export async function verifyEmailToken(userId: string, presentedToken: string) {
   return { ok: true };
 }
 
-export default { sendVerificationEmail, verifyEmailToken };
+const emailService = { sendVerificationEmail, verifyEmailToken };
+
+export default emailService;

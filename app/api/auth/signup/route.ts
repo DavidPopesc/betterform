@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       console.error("sendVerificationEmail failed", err)
     }
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, userId: user.id, email: user.email })
   } catch (err) {
     console.error('Signup error:', err)
     // safely log stack if present, otherwise stringify

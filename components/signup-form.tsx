@@ -1,5 +1,6 @@
 "use client"
 import React, { useState } from "react"
+import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,7 +22,8 @@ export function SignupForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const [status, setStatus] = useState<null | "idle" | "loading" | "sent" | "error">("idle")
+  const router = useRouter()
+  const [status, setStatus] = useState<null | "idle" | "loading" | "error">("idle")
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -47,9 +49,18 @@ export function SignupForm({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name, email, password }),
       })
-      if (res.ok) setStatus("sent")
-      else setStatus("error")
-    } catch (err) {
+      if (!res.ok) {
+        setStatus("error")
+        return
+      }
+      const data = await res.json()
+      const uid = String(data.userId || "")
+      if (!uid) {
+        setStatus("error")
+        return
+      }
+      router.push(`/signup/check-email?uid=${encodeURIComponent(uid)}&email=${encodeURIComponent(email)}`)
+    } catch {
       setStatus("error")
     }
   }
@@ -97,7 +108,12 @@ export function SignupForm({
                 </FieldDescription>
               </Field>
               <Field>
-                <Button type="submit" disabled={status === "loading"}>{status === "sent" ? "Check your email" : "Create Account"}</Button>
+                <Button type="submit" disabled={status === "loading"}>{status === "loading" ? "Creating account..." : "Create Account"}</Button>
+                {status === "error" ? (
+                  <FieldDescription className="text-destructive text-center">
+                    Sign up failed. Please check your details and try again.
+                  </FieldDescription>
+                ) : null}
                 <FieldDescription className="text-center">
                   Already have an account? <a href="/login">Sign in</a>
                 </FieldDescription>

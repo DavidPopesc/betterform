@@ -18,6 +18,14 @@ export async function POST(req: Request) {
     const ok = await verifyPassword(user.passwordHash, password)
     if (!ok) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
 
+    const verified = await prisma.emailVerification.findFirst({
+      where: { userId: user.id, used: true },
+      select: { id: true },
+    })
+    if (!verified) {
+      return NextResponse.json({ error: "Please verify your email before signing in" }, { status: 403 })
+    }
+
     // create session token
     const token = crypto.randomBytes(32).toString("hex")
     const tokenHash = sha256Hex(token)
