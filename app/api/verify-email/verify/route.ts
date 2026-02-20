@@ -6,6 +6,25 @@ function sha256Hex(input: string) {
   return crypto.createHash('sha256').update(input).digest('hex')
 }
 
+const APP_URL = process.env.APP_URL || ''
+let APP_ORIGIN = ''
+try {
+  APP_ORIGIN = APP_URL ? new URL(APP_URL).origin : ''
+} catch (e) {
+  APP_ORIGIN = ''
+}
+
+function escapeHtml(input?: string) {
+  if (!input) return ''
+  return String(input)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/\//g, '&#x2F;')
+}
+
 // Lucide icon SVGs
 const icons = {
   xCircle: '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
@@ -23,12 +42,40 @@ function createVerificationPage(
   email?: string,
   autoClose?: boolean
 ) {
+  const safeTitle = escapeHtml(title)
+  const safeMessage = escapeHtml(message)
+  const safeEmail = escapeHtml(email)
+
+  const autoCloseScript = autoClose
+    ? (() => {
+        const serializedEmail = JSON.stringify(String(safeEmail || ''))
+        if (APP_ORIGIN) {
+          return `<script>
+      setTimeout(() => {
+        if (window.opener) {
+          window.opener.postMessage({ type: 'email-verified', email: ${serializedEmail} }, ${JSON.stringify(APP_ORIGIN)});
+          window.close();
+        }
+      }, 3000);
+    </script>`
+        }
+        // No configured origin: avoid posting with wildcard to prevent origin confusion.
+        return `<script>
+      setTimeout(() => {
+        if (window.opener) {
+          window.close();
+        }
+      }, 3000);
+    </script>`
+      })()
+    : ''
+
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
+    <title>${safeTitle}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       @keyframes fadeIn {
@@ -49,23 +96,16 @@ function createVerificationPage(
               ${icon}
             </div>
           </div>
-          <h1 class="text-2xl font-semibold text-slate-900 mb-2">${title}</h1>
-          ${email ? `<div class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-md text-sm font-medium text-slate-700 mb-3">${email}</div>` : ''}
-          <p class="text-slate-600 leading-relaxed">${message}</p>
+          <h1 class="text-2xl font-semibold text-slate-900 mb-2">${safeTitle}</h1>
+          ${safeEmail ? `<div class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-md text-sm font-medium text-slate-700 mb-3">${safeEmail}</div>` : ''}
+          <p class="text-slate-600 leading-relaxed">${safeMessage}</p>
         </div>
       </div>
       <p class="text-center text-xs text-slate-500 mt-4">
         You can safely close this window
       </p>
     </div>
-    ${autoClose ? `<script>
-      setTimeout(() => {
-        if (window.opener) {
-          window.opener.postMessage({ type: 'email-verified', email: '${email}' }, '*');
-          window.close();
-        }
-      }, 3000);
-    </script>` : ''}
+    ${autoCloseScript}
   </body>
 </html>`
 }

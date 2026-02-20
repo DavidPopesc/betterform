@@ -10,26 +10,62 @@ import {
   getVerifiedEmails 
 } from '@/lib/form-account'
 
-// Helper to send webhook notification
+// Helper to send webhook notification (validates URL, blocks local IPs, and enforces timeout)
 async function sendWebhookNotification(webhookUrl: string, payload: unknown, apiKey: string) {
+  // Validate URL and disallow non-HTTPS or internal addresses
   try {
+    const parsed = new URL(webhookUrl)
+    if (parsed.protocol !== 'https:') {
+      console.error('Webhook URL must be https:', webhookUrl)
+      return
+    }
+
+    const hostname = parsed.hostname
+    // Block obvious local/internal hostnames and IP ranges
+    const isIpv4 = /^\d+\.\d+\.\d+\.\d+$/.test(hostname)
+    if (hostname === 'localhost' || hostname.endsWith('.local')) {
+      console.error('Webhook URL hostname not allowed:', hostname)
+      return
+    }
+
+    if (isIpv4) {
+      const parts = hostname.split('.').map((n) => Number(n))
+      if (
+        parts[0] === 10 ||
+        parts[0] === 127 ||
+        (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+        (parts[0] === 192 && parts[1] === 168) ||
+        (parts[0] === 169 && parts[1] === 254)
+      ) {
+        console.error('Webhook URL resolves to private IP, blocked:', hostname)
+        return
+      }
+    }
+
     // Create signature for webhook verification
-    const signature = crypto
-      .createHmac('sha256', apiKey)
-      .update(JSON.stringify(payload))
-      .digest('hex')
+    const signature = crypto.createHmac('sha256', apiKey).update(JSON.stringify(payload)).digest('hex')
 
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-BetterForm-Signature': signature,
-      },
-      body: JSON.stringify(payload),
-    })
+    // Use AbortController to enforce timeout and prevent hanging requests
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 5000)
 
-    if (!response.ok) {
-      console.error('Webhook delivery failed:', response.status, response.statusText)
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-BetterForm-Signature': signature,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+        redirect: 'error',
+      })
+
+      if (!response.ok) {
+        console.error('Webhook delivery failed:', response.status, response.statusText)
+      }
+    } finally {
+      clearTimeout(timeout)
     }
   } catch (err) {
     console.error('Webhook notification error:', err)

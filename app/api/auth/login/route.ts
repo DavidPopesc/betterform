@@ -26,8 +26,8 @@ export async function POST(req: Request) {
     await prisma.session.create({ data: { userId: user.id, tokenHash, expiresAt } })
 
     const res = NextResponse.json({ ok: true })
-    // set cookie
-    res.cookies.set({ name: "bf_session", value: token, httpOnly: true, path: "/", sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 60 * 60 * 24 * 7 })
+    // set cookie (10 years)
+    res.cookies.set({ name: "bf_session", value: token, httpOnly: true, path: "/", sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 60 * 60 * 24 * 365 * 10 })
 
     return res
   } catch (err) {

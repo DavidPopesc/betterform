@@ -2,7 +2,7 @@ import { cookies } from 'next/headers'
 import { v4 as uuidv4 } from 'uuid'
 
 const FORM_ACCOUNT_COOKIE = 'form_account_uuid'
-const COOKIE_MAX_AGE = 365 * 24 * 60 * 60 // 1 year
+const COOKIE_MAX_AGE = 365 * 2 * 24 * 60 * 60 // 2 years
 
 /**
  * Get or create a form account UUID from cookies
