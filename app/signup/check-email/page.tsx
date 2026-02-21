@@ -198,7 +198,7 @@ export default function SignupCheckEmailPage() {
           {pollError ? <p className="text-destructive text-sm">{pollError}</p> : null}
 
           {verified ? (
-            <div className="space-y-3">
+            <div className="space-y-3 space-x-5 text-center">
               <Button onClick={setupPasskey} disabled={submitting}>
                 {submitting ? "Processing..." : "Set up passkey"}
               </Button>
