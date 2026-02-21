@@ -71,7 +71,7 @@ export default function VerifyEmailPage() {
           </CardDescription>
         </CardHeader>
         {!invalid && (state === "idle" || state === "loading") ? (
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 space-x-5 text-center">
             <Button disabled={state === "loading"} onClick={() => submitDecision("yes")}>
               Yes, this was me
             </Button>
