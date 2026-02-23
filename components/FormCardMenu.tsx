@@ -91,7 +91,7 @@ export default function FormCardMenu({
       )}
 
       {isOpen && (
-        <Card className="absolute right-0 -top-64 w-48 p-0 z-50 shadow-lg">
+        <Card className="absolute right-0 -top-59 w-48 p-0 z-50 shadow-lg">
           <div className="space-y-1">
             <button
               onClick={copyLink}
