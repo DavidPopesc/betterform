@@ -18,7 +18,7 @@ export default function Home() {
       <header className="border-b border-slate-200 px-6 py-4">
         <div className="mx-auto max-w-6xl flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3">
-            <div className="rounded-md bg-slate-950 p-2 shadow-sm">
+            <div className="rounded-md bg-slate-100 p-2 shadow-sm">
               <Image src="/betterformlogo.png" alt="Better Form logo" width={24} height={24} priority />
             </div>
             <div>
