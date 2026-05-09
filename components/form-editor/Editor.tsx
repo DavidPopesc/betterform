@@ -26,6 +26,8 @@ export type Field = {
   requireVerifiedEmail?: boolean
   order?: number
   options?: FieldOption[]
+  allowedFileTypes?: string[]
+  maxFiles?: number
   points?: number
   correctAnswer?: string | string[]
 }
@@ -38,6 +40,7 @@ export const FIELD_TYPES = [
   { value: 'multiple_choice', label: 'Multiple choice' },
   { value: 'checkboxes', label: 'Checkboxes' },
   { value: 'dropdown', label: 'Dropdown' },
+  { value: 'file_upload', label: 'File upload' },
   { value: 'date', label: 'Date' },
   { value: 'time', label: 'Time' },
   { value: 'linear_scale', label: 'Linear scale' },
@@ -52,6 +55,7 @@ export function getDefaultLabel(type: string): string {
   if (type === 'section') return 'Section break'
   if (type === 'email') return 'Email address'
   if (type === 'phone') return 'Phone number'
+  if (type === 'file_upload') return 'Upload files'
   return fieldType ? `${fieldType.label} question` : ''
 }
 
@@ -152,6 +156,10 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
     if (['multiple_choice', 'checkboxes', 'dropdown'].includes(type)) {
       f.options = [{ id: `opt_${Math.random().toString(36).slice(2, 9)}`, label: 'Option 1' }]
     }
+    if (type === 'file_upload') {
+      f.allowedFileTypes = []
+      f.maxFiles = 1
+    }
     // Set default points when quiz mode is enabled
     if (isQuiz && !['text', 'section', 'email', 'phone'].includes(type)) {
       f.points = 1
@@ -199,6 +207,19 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
     const optId = `opt_${Math.random().toString(36).slice(2, 9)}`
     const newOpt: FieldOption = { id: optId, label: `Option ${(field.options?.length || 0) + 1}` }
     updateField(fieldId, { options: [...(field.options || []), newOpt] })
+  }
+
+  function handleOptionKeyDown(fieldId: string, nextIndex: number, event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Enter') return
+
+    event.preventDefault()
+    addOption(fieldId)
+
+    requestAnimationFrame(() => {
+      const nextInput = document.querySelector<HTMLInputElement>(`[data-option-input="${fieldId}-${nextIndex}"]`)
+      nextInput?.focus()
+      nextInput?.select()
+    })
   }
 
   function updateOption(fieldId: string, optionId: string, label: string) {
@@ -529,6 +550,8 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                                 <Input
                                   value={opt.label}
                                   onChange={(e) => updateOption(f.id, opt.id, e.target.value)}
+                                  onKeyDown={(e) => handleOptionKeyDown(f.id, optIdx + 1, e)}
+                                  data-option-input={`${f.id}-${optIdx}`}
                                   placeholder={`Option ${optIdx + 1}`}
                                   className="flex-1 border-0 border-b rounded-none px-0 focus-visible:ring-0"
                                 />
@@ -599,6 +622,8 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                                   <Input
                                     value={opt.label}
                                     onChange={(e) => updateOption(f.id, opt.id, e.target.value)}
+                                    onKeyDown={(e) => handleOptionKeyDown(f.id, optIdx + 1, e)}
+                                    data-option-input={`${f.id}-${optIdx}`}
                                     placeholder={`Option ${optIdx + 1}`}
                                     className="flex-1 border-0 border-b rounded-none px-0 focus-visible:ring-0"
                                   />
@@ -662,6 +687,8 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                                 <Input
                                   value={opt.label}
                                   onChange={(e) => updateOption(f.id, opt.id, e.target.value)}
+                                  onKeyDown={(e) => handleOptionKeyDown(f.id, optIdx + 1, e)}
+                                  data-option-input={`${f.id}-${optIdx}`}
                                   placeholder={`Option ${optIdx + 1}`}
                                   className="flex-1 border-0 border-b rounded-none px-0 focus-visible:ring-0"
                                 />
@@ -755,6 +782,51 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                               disabled
                               className="bg-transparent border-0 border-b rounded-none"
                             />
+                          </div>
+                        )}
+
+                        {f.type === 'file_upload' && (
+                          <div className="mt-4 space-y-3">
+                            <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-muted-foreground">
+                              Drag files here or click to browse
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_120px]">
+                              <div>
+                                <label className="mb-1 block text-xs text-muted-foreground">Allowed file types</label>
+                                <Input
+                                  value={(f.allowedFileTypes || []).join(', ')}
+                                  onChange={(e) =>
+                                    updateField(f.id, {
+                                      allowedFileTypes: e.target.value
+                                        .split(',')
+                                        .map((value) => value.trim())
+                                        .filter(Boolean),
+                                    })
+                                  }
+                                  placeholder=".pdf, .png, image/*"
+                                  className="text-sm"
+                                />
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Use extensions like <code>.pdf</code>, MIME types like <code>application/pdf</code>, or wildcards like <code>image/*</code>.
+                                </p>
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs text-muted-foreground">Max files</label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  max="10"
+                                  value={f.maxFiles ?? 1}
+                                  onChange={(e) =>
+                                    updateField(f.id, {
+                                      maxFiles: Math.max(1, Math.min(10, Number.parseInt(e.target.value || '1', 10) || 1)),
+                                    })
+                                  }
+                                  className="text-sm"
+                                />
+                                <p className="mt-1 text-xs text-muted-foreground">Hard max is 10 files. Each file is capped at 10 MB.</p>
+                              </div>
+                            </div>
                           </div>
                         )}
 

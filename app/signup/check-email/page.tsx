@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,16 +21,22 @@ function toBytesFromString(value: string) {
   return padded
 }
 
-export default function SignupCheckEmailPage() {
+function SignupCheckEmailContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const uid = useMemo(() => searchParams.get("uid") || "", [searchParams])
   const email = useMemo(() => searchParams.get("email") || "", [searchParams])
+  const emailSent = useMemo(() => searchParams.get("emailSent") !== "0", [searchParams])
 
   const [verified, setVerified] = useState(false)
+  const [hasPasskey, setHasPasskey] = useState(false)
   const [pollError, setPollError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [passkeyError, setPasskeyError] = useState("")
+  const [emailStatus, setEmailStatus] = useState(
+    emailSent ? "" : "Failed to send email please try again."
+  )
+  const [resendCooldown, setResendCooldown] = useState(emailSent ? 60 : 0)
 
   useEffect(() => {
     if (!uid) return
@@ -51,6 +57,7 @@ export default function SignupCheckEmailPage() {
         const data = await res.json()
         if (!cancelled) {
           setVerified(Boolean(data.verified))
+          setHasPasskey(Boolean(data.hasPasskey))
           if (data.verified) setPollError("")
         }
       } catch {
@@ -66,6 +73,16 @@ export default function SignupCheckEmailPage() {
       clearInterval(timer)
     }
   }, [uid])
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+
+    const timer = window.setTimeout(() => {
+      setResendCooldown((current) => Math.max(0, current - 1))
+    }, 1000)
+
+    return () => window.clearTimeout(timer)
+  }, [resendCooldown])
 
   async function finalizeSignup(passkey?: {
     credentialId: string
@@ -85,7 +102,12 @@ export default function SignupCheckEmailPage() {
       })
 
       if (!res.ok) {
-        setPasskeyError("Could not complete sign up. Please try again.")
+        const data = await res.json().catch(() => ({}))
+        setPasskeyError(
+          data?.error === "Passkey already configured"
+            ? "This account already has a passkey set up."
+            : "Could not complete sign up. Please try again."
+        )
         setSubmitting(false)
         return
       }
@@ -165,6 +187,44 @@ export default function SignupCheckEmailPage() {
     }
   }
 
+  async function resendVerificationEmail() {
+    setEmailStatus("")
+    setSubmitting(true)
+
+    try {
+      const res = await fetch("/api/auth/signup/resend", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ uid, email }),
+      })
+
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        if (typeof data?.retryAfter === "number") {
+          setResendCooldown(data.retryAfter)
+        }
+        setEmailStatus(data?.error || "Failed to send email please try again.")
+        setSubmitting(false)
+        return
+      }
+
+      if (data?.alreadyVerified) {
+        setVerified(true)
+        setEmailStatus("")
+        setSubmitting(false)
+        return
+      }
+
+      setEmailStatus("Verification email sent.")
+      setResendCooldown(typeof data?.retryAfter === "number" ? data.retryAfter : 60)
+    } catch {
+      setEmailStatus("Failed to send email please try again.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   if (!uid || !email) {
     return (
       <div className="bg-muted flex min-h-svh items-center justify-center p-6">
@@ -190,29 +250,58 @@ export default function SignupCheckEmailPage() {
           </CardTitle>
           <CardDescription>
             {verified
-              ? "You can now set up a passkey, or skip and continue to your dashboard."
+              ? hasPasskey
+                ? "Your email is confirmed and your passkey is already set up. Continue to your dashboard."
+                : "Set up a passkey now, or continue with email approval as your fallback sign-in method."
               : `We sent a verification link to ${email}. Open it and choose “Yes, this was me”.`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           {pollError ? <p className="text-destructive text-sm">{pollError}</p> : null}
+          {emailStatus ? (
+            <p className={emailStatus.startsWith("Failed") ? "text-destructive text-sm" : "text-sm text-muted-foreground"}>
+              {emailStatus}
+            </p>
+          ) : null}
 
           {verified ? (
-            <div className="space-y-3 space-x-5 text-center">
-              <Button onClick={setupPasskey} disabled={submitting}>
-                {submitting ? "Processing..." : "Set up passkey"}
-              </Button>
+            <div className="space-y-3 text-center">
+              {!hasPasskey ? (
+                <Button onClick={setupPasskey} disabled={submitting}>
+                  {submitting ? "Processing..." : "Set up passkey"}
+                </Button>
+              ) : null}
               <Button type="button" variant="outline" onClick={() => finalizeSignup()} disabled={submitting}>
-                Continue without passkey
+                Continue to dashboard
               </Button>
             </div>
           ) : (
-            <Button type="button" variant="outline" onClick={() => router.push("/signup")}>Back</Button>
+            <div className="flex flex-col gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={resendVerificationEmail}
+                disabled={submitting || resendCooldown > 0}
+              >
+                {resendCooldown > 0 ? `Resend email after 1 min (${resendCooldown}s)` : "Resend email"}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => router.push("/signup")}>
+                Back
+              </Button>
+            </div>
           )}
 
           {passkeyError ? <p className="text-destructive text-sm pt-1">{passkeyError}</p> : null}
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function SignupCheckEmailPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupCheckEmailContent />
+    </Suspense>
   )
 }

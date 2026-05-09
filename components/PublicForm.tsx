@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -15,6 +17,8 @@ interface Field {
   required?: boolean
   requireVerifiedEmail?: boolean
   options?: Array<{ id: string; label: string }>
+  allowedFileTypes?: string[]
+  maxFiles?: number
   points?: number
   correctAnswer?: string | string[]
 }
@@ -72,6 +76,7 @@ const THEME_COLORS: Record<string, { bg: string; border: string; input: string; 
 export default function PublicForm({ publicId, formName, fields, theme = 'slate', isQuiz = false, showScore = false, isClosed = false, closedReason = 'This form is not accepting responses.', successMessage = 'Your response has been recorded.' }: PublicFormProps) {
   const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [responses, setResponses] = useState<Record<string, string | string[] | number>>({})
+  const [fileResponses, setFileResponses] = useState<Record<string, File[]>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [score, setScore] = useState<{ earned: number; total: number } | null>(null)
@@ -223,9 +228,32 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
     setResponses(prev => ({ ...prev, [fieldId]: value }))
   }
 
+  const handleFileChange = (fieldId: string, files: FileList | null, field: Field) => {
+    const selectedFiles = files ? Array.from(files) : []
+    const maxFiles = Math.min(field.maxFiles || 1, 10)
+
+    if (selectedFiles.length > maxFiles) {
+      setError(`You can upload up to ${maxFiles} file${maxFiles === 1 ? '' : 's'} for "${field.label}".`)
+      return
+    }
+
+    const oversizedFile = selectedFiles.find((file) => file.size > 10 * 1024 * 1024)
+    if (oversizedFile) {
+      setError(`"${oversizedFile.name}" is larger than the 10 MB limit.`)
+      return
+    }
+
+    setError('')
+    setFileResponses((prev) => ({ ...prev, [fieldId]: selectedFiles }))
+  }
+
   const handleNext = () => {
     // Validate required fields on current page
-    const missingRequired = pageFields.filter(f => f.required && !responses[f.id] && f.type !== 'text')
+    const missingRequired = pageFields.filter((f) => {
+      if (!f.required || f.type === 'text') return false
+      if (f.type === 'file_upload') return (fileResponses[f.id] || []).length === 0
+      return !responses[f.id]
+    })
     if (missingRequired.length > 0) {
       setError('Please fill in all required fields')
       return
@@ -281,7 +309,11 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
     setError('')
 
     // Validate all required fields
-    const missingRequired = fields.filter(f => f.required && !responses[f.id] && f.type !== 'text' && f.type !== 'section')
+    const missingRequired = fields.filter((f) => {
+      if (!f.required || f.type === 'text' || f.type === 'section') return false
+      if (f.type === 'file_upload') return (fileResponses[f.id] || []).length === 0
+      return !responses[f.id]
+    })
     if (missingRequired.length > 0) {
       setError('Please fill in all required fields')
       return
@@ -295,10 +327,17 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
 
     setIsSubmitting(true)
     try {
+      const formData = new FormData()
+      formData.append('responses', JSON.stringify(responses))
+      Object.entries(fileResponses).forEach(([fieldId, files]) => {
+        files.forEach((file) => {
+          formData.append(`file__${fieldId}`, file)
+        })
+      })
+
       const res = await fetch(`/api/submit/${publicId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ responses }),
+        body: formData,
       })
 
       const data = await res.json()
@@ -341,6 +380,12 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
     return (
       <div className={`min-h-screen ${themeColors.bg} py-12 px-4`}>
         <div className="max-w-2xl mx-auto">
+          <div className="mb-4 flex items-center justify-center">
+            <Link href="/" className="inline-flex items-center gap-3 rounded-full bg-white/90 px-4 py-2 shadow-sm ring-1 ring-slate-200">
+              <Image src="/betterformlogo.png" alt="Better Form logo" width={28} height={28} />
+              <span className="text-sm font-semibold text-slate-900">Better Form</span>
+            </Link>
+          </div>
           <Card className="p-8 text-center">
             <div className="text-4xl mb-4">✓</div>
             <h2 className="text-2xl font-semibold mb-2">Thank you!</h2>
@@ -438,10 +483,10 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
                 }
                 setError('')
               } else {
-                setError(data.error || 'Failed to send verification email')
+                setError(data.error || 'Failed to send email please try again.')
               }
             } catch {
-              setError('Failed to send verification email')
+              setError('Failed to send email please try again.')
             } finally {
               setVerificationSending(false)
             }
@@ -627,6 +672,40 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
           />
         )
 
+      case 'file_upload': {
+        const allowedTypes = field.allowedFileTypes || []
+        const maxFiles = Math.min(field.maxFiles || 1, 10)
+        const selectedFiles = fileResponses[field.id] || []
+
+        return (
+          <div className="space-y-3">
+            <Input
+              type="file"
+              multiple={maxFiles > 1}
+              accept={allowedTypes.join(',')}
+              onChange={(e) => handleFileChange(field.id, e.target.files, field)}
+              required={field.required}
+            />
+            <div className="text-xs text-muted-foreground">
+              <p>Up to {maxFiles} file{maxFiles === 1 ? '' : 's'}, 10 MB max each.</p>
+              {allowedTypes.length > 0 ? <p>Allowed types: {allowedTypes.join(', ')}</p> : <p>Any file type allowed.</p>}
+            </div>
+            {selectedFiles.length > 0 ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <p className="mb-2 font-medium text-slate-900">Selected files</p>
+                <ul className="space-y-1 text-muted-foreground">
+                  {selectedFiles.map((file) => (
+                    <li key={`${field.id}-${file.name}-${file.lastModified}`}>
+                      {file.name} ({Math.max(1, Math.round(file.size / 1024))} KB)
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        )
+      }
+
       case 'linear_scale':
       case 'rating':
         return (
@@ -663,7 +742,14 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
   return (
     <div className={`min-h-screen ${themeColors.bg} py-12 px-4`}>
       <div className="max-w-2xl mx-auto">
+        <div className="mb-4 flex items-center justify-center">
+          <Link href="/" className="inline-flex items-center gap-3 rounded-full bg-white/90 px-4 py-2 shadow-sm ring-1 ring-slate-200">
+            <Image src="/betterformlogo.png" alt="Better Form logo" width={28} height={28} />
+            <span className="text-sm font-semibold text-slate-900">Better Form</span>
+          </Link>
+        </div>
         <Card className="p-8 mb-6">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Better Form</p>
           <h1 className="text-3xl font-bold mb-2">{formName || 'Untitled form'}</h1>
           
           {isQuiz && (() => {
@@ -737,6 +823,10 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
             </div>
           </form>
         )}
+
+        <p className="mt-6 text-center text-xs text-slate-500">
+          Secure forms powered by Better Form.
+        </p>
       </div>
     </div>
   )

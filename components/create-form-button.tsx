@@ -4,7 +4,7 @@ import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 
-export default function CreateFormButton() {
+export default function CreateFormButton({ label = 'Start' }: { label?: string }) {
   const router = useRouter()
   const [loading, setLoading] = React.useState(false)
 
@@ -27,7 +27,7 @@ export default function CreateFormButton() {
 
   return (
     <Button size="sm" onClick={handleCreate} disabled={loading}>
-      {loading ? 'Creating…' : 'Start'}
+      {loading ? 'Creating…' : label}
     </Button>
   )
 }

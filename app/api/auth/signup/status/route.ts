@@ -20,7 +20,12 @@ export async function GET(req: Request) {
       select: { id: true },
     })
 
-    return NextResponse.json({ ok: true, verified: Boolean(verified) })
+    const hasPasskey = await prisma.passkeyCredential.findFirst({
+      where: { userId: uid },
+      select: { id: true },
+    })
+
+    return NextResponse.json({ ok: true, verified: Boolean(verified), hasPasskey: Boolean(hasPasskey) })
   } catch (error) {
     console.error("Signup status error:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })

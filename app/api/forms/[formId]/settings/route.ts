@@ -4,7 +4,7 @@ import crypto from 'crypto'
 
 export async function GET(
   req: Request,
-  { params }: { params: { formId?: string } | Promise<{ formId?: string }> }
+  { params }: { params: Promise<{ formId?: string }> }
 ) {
   try {
     const user = await getSessionUser()
@@ -66,7 +66,7 @@ export async function GET(
 
 export async function POST(
   req: Request,
-  { params }: { params: { formId?: string } | Promise<{ formId?: string }> }
+  { params }: { params: Promise<{ formId?: string }> }
 ) {
   try {
     const user = await getSessionUser()

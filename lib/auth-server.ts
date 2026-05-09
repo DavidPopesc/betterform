@@ -1,28 +1,30 @@
 import { cookies } from 'next/headers'
-import crypto from 'crypto'
-
-function sha256Hex(input: string) {
-  return crypto.createHash('sha256').update(input).digest('hex')
-}
+import { parseSessionCookie } from '@/lib/session'
 
 /**
  * Extract and validate the current user's session from cookies.
  * Returns the authenticated user object, or null if not authenticated.
  */
 export async function getSessionUser() {
-  const cookieStore = (await Promise.resolve(cookies() as any)) as any
+  const cookieStore = await cookies()
   const token = cookieStore.get?.('bf_session')?.value
 
   if (!token) {
     return null
   }
 
-  const tokenHash = sha256Hex(token)
   const { default: prisma } = await import('@/lib/db')
-  const session = await prisma.session.findFirst({
-    where: { tokenHash, revoked: false },
-    include: { user: true },
-  })
+  const parsed = parseSessionCookie(token)
+  const session =
+    parsed.type === 'jwt'
+      ? await prisma.session.findFirst({
+          where: { id: parsed.payload.sid, userId: parsed.payload.uid, revoked: false },
+          include: { user: true },
+        })
+      : await prisma.session.findFirst({
+          where: { tokenHash: parsed.tokenHash, revoked: false },
+          include: { user: true },
+        })
 
   if (!session || (session.expiresAt && session.expiresAt < new Date())) {
     return null

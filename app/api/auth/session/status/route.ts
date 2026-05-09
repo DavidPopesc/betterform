@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import crypto from "crypto"
-
-function sha256Hex(input: string) {
-  return crypto.createHash("sha256").update(input).digest("hex")
-}
+import { clearSessionCookie, parseSessionCookie } from "@/lib/session"
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,22 +9,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ authenticated: false, hadToken: false, invalidToken: false })
     }
 
-    const tokenHash = sha256Hex(token)
     const { default: prisma } = await import("@/lib/db")
-    const session = await prisma.session.findFirst({
-      where: { tokenHash, revoked: false },
-      include: { user: true },
-    })
+    const parsed = parseSessionCookie(token)
+    const session =
+      parsed.type === "jwt"
+        ? await prisma.session.findFirst({
+            where: { id: parsed.payload.sid, userId: parsed.payload.uid, revoked: false },
+            include: { user: true },
+          })
+        : await prisma.session.findFirst({
+            where: { tokenHash: parsed.tokenHash, revoked: false },
+            include: { user: true },
+          })
 
     if (!session || (session.expiresAt && session.expiresAt < new Date())) {
       const res = NextResponse.json({ authenticated: false, hadToken: true, invalidToken: true })
-      res.cookies.set({
-        name: "bf_session",
-        value: "",
-        path: "/",
-        maxAge: 0,
-        expires: new Date(0),
-      })
+      clearSessionCookie(res)
       return res
     }
 

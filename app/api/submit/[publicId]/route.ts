@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { mkdir, writeFile } from 'fs/promises'
+import path from 'path'
+import type { Prisma } from '@/lib/generated/prisma'
 import { 
   getOrCreateFormAccountId, 
   getClientIp, 
@@ -9,6 +12,37 @@ import {
   hasEmailSubmitted,
   getVerifiedEmails 
 } from '@/lib/form-account'
+import { sendFormSubmissionAlert } from '@/lib/email'
+
+type FileUploadField = {
+  id: string
+  type: string
+  requireVerifiedEmail?: boolean
+  allowedFileTypes?: string[]
+  maxFiles?: number
+}
+
+function sanitizeFilename(filename: string) {
+  return filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+}
+
+function matchesAllowedFileType(file: File, allowedTypes: string[]) {
+  if (allowedTypes.length === 0) return true
+
+  const fileExtension = path.extname(file.name).toLowerCase()
+  const fileMimeType = file.type.toLowerCase()
+
+  return allowedTypes.some((allowedType) => {
+    const normalized = allowedType.trim().toLowerCase()
+    if (!normalized) return false
+    if (normalized.startsWith('.')) return fileExtension === normalized
+    if (normalized.endsWith('/*')) {
+      const prefix = normalized.slice(0, -1)
+      return fileMimeType.startsWith(prefix)
+    }
+    return fileMimeType === normalized
+  })
+}
 
 // Helper to send webhook notification (validates URL, blocks local IPs, and enforces timeout)
 async function sendWebhookNotification(webhookUrl: string, payload: unknown, apiKey: string) {
@@ -74,7 +108,7 @@ async function sendWebhookNotification(webhookUrl: string, payload: unknown, api
 
 export async function POST(
   req: Request,
-  { params }: { params: { publicId?: string } | Promise<{ publicId?: string }> }
+  { params }: { params: Promise<{ publicId?: string }> }
 ) {
   try {
     const resolvedParams = (await params) as { publicId?: string }
@@ -93,6 +127,8 @@ export async function POST(
       where: { publicId },
       select: { 
         id: true, 
+        name: true,
+        publicId: true,
         schema: true,
         responsesEnabled: true,
         responseDeadline: true,
@@ -101,6 +137,11 @@ export async function POST(
         apiEnabled: true,
         submissionApiKey: true,
         webhookUrl: true,
+        account: {
+          select: {
+            email: true,
+          },
+        },
       },
     })
 
@@ -131,8 +172,31 @@ export async function POST(
       }, { status: 403 })
     }
 
-    const body = await req.json()
-    const { responses } = body
+    let responses: Record<string, unknown>
+    const uploadedFiles = new Map<string, File[]>()
+    const contentType = req.headers.get('content-type') || ''
+
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await req.formData()
+      const rawResponses = formData.get('responses')
+
+      if (typeof rawResponses !== 'string') {
+        return NextResponse.json({ error: 'invalid_response_data' }, { status: 400 })
+      }
+
+      responses = JSON.parse(rawResponses) as Record<string, unknown>
+
+      for (const [key, value] of formData.entries()) {
+        if (!key.startsWith('file__') || !(value instanceof File)) continue
+        const fieldId = key.replace('file__', '')
+        const fieldFiles = uploadedFiles.get(fieldId) || []
+        fieldFiles.push(value)
+        uploadedFiles.set(fieldId, fieldFiles)
+      }
+    } else {
+      const body = await req.json()
+      responses = body.responses as Record<string, unknown>
+    }
 
     if (!responses || typeof responses !== 'object') {
       return NextResponse.json({ error: 'invalid_response_data' }, { status: 400 })
@@ -159,7 +223,7 @@ export async function POST(
     }
 
     // Extract email from responses (check for email field)
-    const schema = form.schema as { fields?: Array<{ id: string; type: string }> }
+    const schema = form.schema as { fields?: FileUploadField[] }
     const emailField = schema.fields?.find(f => f.type === 'email')
     const respondentEmail = emailField ? String(responses[emailField.id] || '').toLowerCase().trim() : null
 
@@ -203,17 +267,99 @@ export async function POST(
       }
     }
 
+    const fileFields = (schema.fields || []).filter((field) => field.type === 'file_upload')
+    for (const field of fileFields) {
+      const fieldFiles = uploadedFiles.get(field.id) || []
+      const maxFiles = Math.min(field.maxFiles || 1, 10)
+
+      if (fieldFiles.length > maxFiles) {
+        return NextResponse.json({
+          error: 'too_many_files',
+          message: `You can upload up to ${maxFiles} file${maxFiles === 1 ? '' : 's'} for this field.`,
+        }, { status: 400 })
+      }
+
+      const invalidFile = fieldFiles.find((file) => file.size > 10 * 1024 * 1024)
+      if (invalidFile) {
+        return NextResponse.json({
+          error: 'file_too_large',
+          message: `${invalidFile.name} is larger than the 10 MB file limit.`,
+        }, { status: 400 })
+      }
+
+      const allowedTypes = field.allowedFileTypes || []
+      const disallowedFile = fieldFiles.find((file) => !matchesAllowedFileType(file, allowedTypes))
+      if (disallowedFile) {
+        return NextResponse.json({
+          error: 'invalid_file_type',
+          message: `${disallowedFile.name} is not an allowed file type.`,
+        }, { status: 400 })
+      }
+    }
+
     // Create response record
     const response = await prisma.response.create({
       data: {
         formId: form.id,
-        response: responses,
+        response: responses as Prisma.InputJsonValue,
         respondentIp: ip,
         respondentEmail,
         formAccountId,
         processed: false,
       },
     })
+
+    const storedResponses: Record<string, unknown> = { ...responses }
+
+    if (fileFields.length > 0) {
+      const uploadBaseDirectory = path.join(process.cwd(), 'uploads', form.id, response.id)
+      await mkdir(uploadBaseDirectory, { recursive: true })
+
+      for (const field of fileFields) {
+        const fieldFiles = uploadedFiles.get(field.id) || []
+        if (fieldFiles.length === 0) continue
+
+        const attachmentMetadata = []
+
+        for (const file of fieldFiles) {
+          const attachmentId = crypto.randomUUID()
+          const safeFilename = sanitizeFilename(file.name)
+          const storageKey = path.join('uploads', form.id, response.id, `${attachmentId}-${safeFilename}`)
+          const filePath = path.join(process.cwd(), storageKey)
+          const buffer = Buffer.from(await file.arrayBuffer())
+
+          await writeFile(filePath, buffer)
+
+          await prisma.attachment.create({
+            data: {
+              id: attachmentId,
+              responseId: response.id,
+              filename: file.name,
+              mimeType: file.type || null,
+              size: file.size,
+              url: storageKey,
+            },
+          })
+
+          attachmentMetadata.push({
+            attachmentId,
+            filename: file.name,
+            mimeType: file.type || null,
+            size: file.size,
+            url: `/api/attachments/${attachmentId}`,
+          })
+        }
+
+        storedResponses[field.id] = attachmentMetadata
+      }
+
+      await prisma.response.update({
+        where: { id: response.id },
+        data: {
+          response: storedResponses as Prisma.InputJsonValue,
+        },
+      })
+    }
 
     // Track submission in form account (for non-API requests)
     if (!isApiRequest && formAccountId) {
@@ -238,6 +384,20 @@ export async function POST(
       })
     }
 
+    if (form.account?.email) {
+      sendFormSubmissionAlert({
+        to: form.account.email,
+        formName: form.name || 'Untitled form',
+        publicId,
+        responseId: response.id,
+        responses: storedResponses,
+        respondentEmail,
+        submittedAt: response.createdAt,
+      }).catch((err) => {
+        console.error('Submission alert email failed:', err)
+      })
+    }
+
     return NextResponse.json({ 
       success: true, 
       responseId: response.id 
@@ -249,4 +409,3 @@ export async function POST(
 }
 
 export const dynamic = 'force-dynamic'
-

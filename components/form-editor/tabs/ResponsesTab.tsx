@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Download } from 'lucide-react'
 
 type ResponseData = {
   id: string
-  response: Record<string, any>
+  response: Record<string, unknown>
   createdAt: string
   respondentIp?: string
 }
@@ -31,11 +31,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
   const [responses, setResponses] = useState<ResponseData[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadResponses()
-  }, [formId])
-
-  async function loadResponses() {
+  const loadResponses = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch(`/api/forms/${formId}/responses`)
@@ -48,7 +44,11 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [formId])
+
+  useEffect(() => {
+    void loadResponses()
+  }, [loadResponses])
 
   async function exportCSV() {
     try {
@@ -67,11 +67,6 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
     } catch (err) {
       console.error('Export failed:', err)
     }
-  }
-
-  const getFieldLabel = (fieldId: string) => {
-    const field = fields.find(f => f.id === fieldId)
-    return field?.label || fieldId
   }
 
   const getOptionLabel = (fieldId: string, optionId: string) => {
@@ -104,24 +99,25 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
         : '0'
 
       // For choice-based fields, calculate distribution
-      let distribution: Record<string, number> = {}
+      const distribution: Record<string, number> = {}
       if (['multiple_choice', 'dropdown'].includes(field.type)) {
         responseValues.forEach(val => {
-          const label = getOptionLabel(field.id, val)
+          const label = getOptionLabel(field.id, String(val))
           distribution[label] = (distribution[label] || 0) + 1
         })
       } else if (field.type === 'checkboxes') {
         responseValues.forEach(val => {
           if (Array.isArray(val)) {
             val.forEach(optId => {
-              const label = getOptionLabel(field.id, optId)
+              const label = getOptionLabel(field.id, String(optId))
               distribution[label] = (distribution[label] || 0) + 1
             })
           }
         })
       } else if (['linear_scale', 'rating'].includes(field.type)) {
         responseValues.forEach(val => {
-          distribution[val] = (distribution[val] || 0) + 1
+          const key = String(val)
+          distribution[key] = (distribution[key] || 0) + 1
         })
       }
 
@@ -225,9 +221,17 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
 
                   if (value !== undefined && value !== null && value !== '') {
                     if (['multiple_choice', 'dropdown'].includes(field.type)) {
-                      displayValue = getOptionLabel(field.id, value)
+                      displayValue = getOptionLabel(field.id, String(value))
+                    } else if (field.type === 'file_upload' && Array.isArray(value)) {
+                      displayValue = value
+                        .map((item) =>
+                          typeof item === 'object' && item !== null && 'filename' in item
+                            ? String((item as { filename: unknown }).filename)
+                            : String(item)
+                        )
+                        .join(', ')
                     } else if (field.type === 'checkboxes' && Array.isArray(value)) {
-                      displayValue = value.map(v => getOptionLabel(field.id, v)).join(', ')
+                      displayValue = value.map(v => getOptionLabel(field.id, String(v))).join(', ')
                     } else {
                       displayValue = String(value)
                     }
@@ -273,9 +277,17 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
 
                 if (value !== undefined && value !== null && value !== '') {
                   if (['multiple_choice', 'dropdown'].includes(field.type)) {
-                    displayValue = getOptionLabel(field.id, value)
+                    displayValue = getOptionLabel(field.id, String(value))
+                  } else if (field.type === 'file_upload' && Array.isArray(value)) {
+                    displayValue = value
+                      .map((item) =>
+                        typeof item === 'object' && item !== null && 'filename' in item
+                          ? String((item as { filename: unknown }).filename)
+                          : String(item)
+                      )
+                      .join(', ')
                   } else if (field.type === 'checkboxes' && Array.isArray(value)) {
-                    displayValue = value.map(v => getOptionLabel(field.id, v)).join(', ')
+                    displayValue = value.map(v => getOptionLabel(field.id, String(v))).join(', ')
                   } else {
                     displayValue = String(value)
                   }
@@ -340,4 +352,3 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
     </div>
   )
 }
-

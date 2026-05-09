@@ -101,6 +101,57 @@ export async function sendLoginApprovalEmail(userId: string, userEmail: string, 
   return { sent: true, expiresAt, approvalId }
 }
 
+export async function sendFormSubmissionAlert(params: {
+  to: string
+  formName: string
+  publicId: string
+  responseId: string
+  responses: Record<string, unknown>
+  respondentEmail?: string | null
+  submittedAt: Date
+}) {
+  const entries = Object.entries(params.responses).slice(0, 8)
+  const fieldsHtml = entries
+    .map(([key, value]) => {
+      const displayValue = Array.isArray(value) ? value.join(", ") : String(value ?? "—")
+      return `<tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;vertical-align:top;">${key}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${displayValue}</td>
+      </tr>`
+    })
+    .join("")
+
+  const responseUrl = `${APP_URL}/dashboard`
+
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: params.to,
+    subject: `New response for ${params.formName}`,
+    html: `
+      <div style="background:#f8fafc;padding:24px;font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;">
+        <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
+          <div style="padding:24px 24px 8px;">
+            <p style="margin:0;font-size:13px;line-height:20px;color:#64748b;">Better Form</p>
+            <h1 style="margin:8px 0 0;font-size:22px;line-height:30px;font-weight:700;">${params.formName} has a new response</h1>
+          </div>
+          <div style="padding:16px 24px 0;font-size:15px;line-height:24px;color:#334155;">
+            <p style="margin:0 0 12px;">A respondent just submitted your form.</p>
+            <p style="margin:0 0 12px;"><strong>Response ID:</strong> ${params.responseId}</p>
+            <p style="margin:0 0 18px;"><strong>Respondent email:</strong> ${params.respondentEmail || "Not provided"}</p>
+          </div>
+          <div style="padding:0 24px 24px;">
+            <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+              ${fieldsHtml || '<tr><td style="padding:12px;">No fields were included in this notification preview.</td></tr>'}
+            </table>
+            <p style="margin:14px 0 18px;font-size:12px;line-height:18px;color:#64748b;">Submitted at ${params.submittedAt.toISOString()}</p>
+            <a href="${responseUrl}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:8px;font-size:14px;font-weight:600;">Open Better Form</a>
+          </div>
+        </div>
+      </div>
+    `,
+  })
+}
+
 export async function verifyEmailToken(userId: string, presentedToken: string) {
   const tokenHash = sha256Hex(presentedToken);
   const { default: _prisma } = await import('./db')
@@ -115,6 +166,6 @@ export async function verifyEmailToken(userId: string, presentedToken: string) {
   return { ok: true };
 }
 
-const emailService = { sendVerificationEmail, sendLoginApprovalEmail, verifyEmailToken };
+const emailService = { sendVerificationEmail, sendLoginApprovalEmail, sendFormSubmissionAlert, verifyEmailToken };
 
 export default emailService;

@@ -3,7 +3,7 @@ import { getSessionUser } from '@/lib/auth-server'
 
 export async function POST(
   req: Request,
-  { params }: { params: { formId?: string } | Promise<{ formId?: string }> }
+  { params }: { params: Promise<{ formId?: string }> }
 ) {
   try {
     const user = await getSessionUser()

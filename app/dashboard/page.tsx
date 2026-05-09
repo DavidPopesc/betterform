@@ -17,7 +17,6 @@ export default async function DashboardPage() {
     { title: "RSVP", color: "bg-rose-100" },
   ]
 
-  // load the user's forms from the database
   const { default: prisma } = await import('@/lib/db')
   const forms = await prisma.form.findMany({ where: { accountId: user.id }, orderBy: { updatedAt: 'desc' }, take: 24 })
 

@@ -11,7 +11,7 @@ type FormRecord = {
   id: string
   publicId?: string
   name?: string | null
-  schema?: any
+  schema?: unknown
   createdAt?: string | Date
   updatedAt?: string | Date
 }

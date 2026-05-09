@@ -6,7 +6,7 @@ const RATE_LIMIT_MS = 5000 // 5 seconds
 
 export async function GET(
   req: Request,
-  { params }: { params: { apiKey?: string } | Promise<{ apiKey?: string }> }
+  { params }: { params: Promise<{ apiKey?: string }> }
 ) {
   try {
     const resolvedParams = (await params) as { apiKey?: string }

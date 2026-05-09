@@ -39,6 +39,8 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const [saving, setSaving] = useState(false)
   const successMessageTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const webhookUrlTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const deadlineDate = responseDeadline ? responseDeadline.slice(0, 10) : ''
+  const deadlineTime = responseDeadline ? responseDeadline.slice(11, 16) : ''
 
   // Generate example field values for API documentation
   const generateFieldExample = (field: { id: string; label: string; type: string }): string => {
@@ -337,6 +339,23 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     }
   }
 
+  async function updateResponseDeadlinePart(part: 'date' | 'time', value: string) {
+    const nextDate = part === 'date' ? value : deadlineDate
+    const nextTime = part === 'time' ? value : deadlineTime
+
+    if (!nextDate && !nextTime) {
+      await updateResponseDeadline('')
+      return
+    }
+
+    if (!nextDate) {
+      setResponseDeadline('')
+      return
+    }
+
+    await updateResponseDeadline(`${nextDate}T${nextTime || '09:00'}`)
+  }
+
   async function toggleOneResponsePerEmail() {
     const newValue = !oneResponsePerEmail
     setOneResponsePerEmail(newValue)
@@ -482,13 +501,26 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
               <>
                 <div>
                   <label className="text-sm text-muted-foreground block mb-2">Response deadline (optional)</label>
-                  <input
-                    type="datetime-local"
-                    value={responseDeadline}
-                    onChange={(e) => updateResponseDeadline(e.target.value)}
-                    disabled={saving}
-                    className="w-full max-w-sm border border-slate-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-                  />
+                  <div className="grid max-w-lg gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Date</label>
+                      <Input
+                        type="date"
+                        value={deadlineDate}
+                        onChange={(e) => updateResponseDeadlinePart('date', e.target.value)}
+                        disabled={saving}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Time</label>
+                      <Input
+                        type="time"
+                        value={deadlineTime}
+                        onChange={(e) => updateResponseDeadlinePart('time', e.target.value)}
+                        disabled={saving || !deadlineDate}
+                      />
+                    </div>
+                  </div>
                   <p className="text-xs text-muted-foreground mt-1">Forms will automatically stop accepting responses after this time</p>
                 </div>
 
@@ -754,4 +786,3 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     </div>
   )
 }
-

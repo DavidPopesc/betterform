@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { publicId?: string } | Promise<{ publicId?: string }> }
+  { params }: { params: Promise<{ publicId?: string }> }
 ) {
   try {
     const resolvedParams = (await params) as { publicId?: string }

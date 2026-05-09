@@ -59,7 +59,9 @@ export function SignupForm({
         setStatus("error")
         return
       }
-      router.push(`/signup/check-email?uid=${encodeURIComponent(uid)}&email=${encodeURIComponent(email)}`)
+      router.push(
+        `/signup/check-email?uid=${encodeURIComponent(uid)}&email=${encodeURIComponent(email)}&emailSent=${data.emailSent ? "1" : "0"}`
+      )
     } catch {
       setStatus("error")
     }

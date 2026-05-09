@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server"
-import crypto from "crypto"
-
-function sha256Hex(input: string) {
-  return crypto.createHash("sha256").update(input).digest("hex")
-}
+import { createSession, setSessionCookie } from "@/lib/session"
 
 function fromBase64Url(value: string) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/")
@@ -56,24 +52,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Passkey not recognized" }, { status: 401 })
     }
 
-    const token = crypto.randomBytes(32).toString("hex")
-    const tokenHash = sha256Hex(token)
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 730)
-
-    await prisma.session.create({ data: { userId: passkey.userId, tokenHash, expiresAt } })
+    const { token, expiresAt } = await createSession(passkey.userId)
 
     await prisma.webAuthnChallenge.delete({ where: { id: challengeId } }).catch(() => {})
 
     const res = NextResponse.json({ ok: true })
-    res.cookies.set({
-      name: "bf_session",
-      value: token,
-      httpOnly: true,
-      path: "/",
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 365 * 10,
-    })
+    setSessionCookie(res, token, expiresAt)
     return res
   } catch (error) {
     console.error("Passkey assertion verify error:", error)

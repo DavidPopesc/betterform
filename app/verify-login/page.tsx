@@ -1,13 +1,13 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { Suspense, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 type DecisionState = "idle" | "loading" | "approved" | "rejected" | "error"
 
-export default function VerifyLoginPage() {
+function VerifyLoginContent() {
   const searchParams = useSearchParams()
   const token = useMemo(() => searchParams.get("t") || "", [searchParams])
   const aid = useMemo(() => searchParams.get("aid") || "", [searchParams])
@@ -88,5 +88,13 @@ export default function VerifyLoginPage() {
         ) : null}
       </Card>
     </div>
+  )
+}
+
+export default function VerifyLoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <VerifyLoginContent />
+    </Suspense>
   )
 }

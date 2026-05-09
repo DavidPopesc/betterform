@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-export default function LoginCheckEmailPage() {
+function LoginCheckEmailContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const aid = useMemo(() => searchParams.get("aid") || "", [searchParams])
@@ -134,5 +134,13 @@ export default function LoginCheckEmailPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function LoginCheckEmailPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginCheckEmailContent />
+    </Suspense>
   )
 }

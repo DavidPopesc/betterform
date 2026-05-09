@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import Editor from '@/components/form-editor/Editor'
 import { getSessionUser } from '@/lib/auth-server'
 
-export default async function Page({ params }: { params: { formId?: string } | Promise<{ formId?: string }> }) {
+export default async function Page({ params }: { params: Promise<{ formId?: string }> }) {
   const user = await getSessionUser()
   if (!user) return redirect('/login')
 

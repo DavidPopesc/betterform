@@ -15,14 +15,15 @@ export async function POST(req: Request) {
     const user = await prisma.account.create({ data: { email, name, passwordHash } })
 
     // send magic link email (async)
+    let emailSent = true
     try {
       await sendVerificationEmail(user.id, email)
     } catch (err) {
-      // log but don't leak details to client
+      emailSent = false
       console.error("sendVerificationEmail failed", err)
     }
 
-    return NextResponse.json({ ok: true, userId: user.id, email: user.email })
+    return NextResponse.json({ ok: true, userId: user.id, email: user.email, emailSent })
   } catch (err) {
     console.error('Signup error:', err)
     // safely log stack if present, otherwise stringify

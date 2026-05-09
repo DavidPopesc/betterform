@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server"
-import crypto from "crypto"
-
-function sha256Hex(input: string) {
-  return crypto.createHash("sha256").update(input).digest("hex")
-}
+import { createSession, setSessionCookie } from "@/lib/session"
 
 type PasskeyPayload = {
   credentialId: string
@@ -36,6 +32,15 @@ export async function POST(req: Request) {
     }
 
     if (passkey?.credentialId) {
+      const existingPasskey = await prisma.passkeyCredential.findFirst({
+        where: { userId: user.id },
+        select: { id: true },
+      })
+
+      if (existingPasskey) {
+        return NextResponse.json({ error: "Passkey already configured" }, { status: 409 })
+      }
+
       await prisma.passkeyCredential.upsert({
         where: { credentialId: passkey.credentialId },
         create: {
@@ -56,22 +61,10 @@ export async function POST(req: Request) {
       })
     }
 
-    const token = crypto.randomBytes(32).toString("hex")
-    const tokenHash = sha256Hex(token)
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 730)
-
-    await prisma.session.create({ data: { userId: user.id, tokenHash, expiresAt } })
+    const { token, expiresAt } = await createSession(user.id)
 
     const res = NextResponse.json({ ok: true })
-    res.cookies.set({
-      name: "bf_session",
-      value: token,
-      httpOnly: true,
-      path: "/",
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 365 * 10,
-    })
+    setSessionCookie(res, token, expiresAt)
 
     return res
   } catch (error) {
