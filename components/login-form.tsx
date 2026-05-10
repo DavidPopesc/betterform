@@ -124,8 +124,8 @@ export function LoginForm({
         if (sessionRes.ok) {
           const sessionData = await sessionRes.json()
           if (sessionData.authenticated) {
+            if (!cancelled) setStatus("loading")
             router.push("/dashboard")
-            router.refresh()
             return
           }
           if (sessionData.invalidToken && !cancelled) {
@@ -185,6 +185,7 @@ export function LoginForm({
           return
         }
         router.push(`/login/check-email?aid=${encodeURIComponent(approvalId)}&email=${encodeURIComponent(email)}`)
+      setStatus("loading")
       } else {
         const data = await res.json().catch(() => ({}))
         setStatus("error")
@@ -202,6 +203,18 @@ export function LoginForm({
         <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-xl">Checking sign in status...</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
+
+  if (status === "loading") {
+    return (
+      <div className={cn("flex flex-col gap-6", className)} {...props}>
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">Signing you in...</CardTitle>
           </CardHeader>
         </Card>
       </div>

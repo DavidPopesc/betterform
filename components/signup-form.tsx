@@ -1,5 +1,5 @@
 "use client"
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -23,7 +23,36 @@ export function SignupForm({
   ...props
 }: React.ComponentProps<"div">) {
   const router = useRouter()
-  const [status, setStatus] = useState<null | "idle" | "loading" | "error">("idle")
+  const [status, setStatus] = useState<null | "checking" | "idle" | "loading" | "error">("checking")
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function precheck() {
+      try {
+        const sessionRes = await fetch("/api/auth/session/status", { cache: "no-store" })
+        if (sessionRes.ok) {
+          const sessionData = await sessionRes.json()
+          if (sessionData.authenticated) {
+            if (!cancelled) setStatus("loading")
+            router.push("/dashboard")
+            return
+          }
+        }
+
+        if (!cancelled) setStatus("idle")
+      } catch {
+        if (!cancelled) {
+          setStatus("idle")
+        }
+      }
+    }
+
+    precheck()
+    return () => {
+      cancelled = true
+    }
+  }, [router])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -62,9 +91,34 @@ export function SignupForm({
       router.push(
         `/signup/check-email?uid=${encodeURIComponent(uid)}&email=${encodeURIComponent(email)}&emailSent=${data.emailSent ? "1" : "0"}`
       )
+      setStatus("loading")
     } catch {
       setStatus("error")
     }
+  }
+
+  if (status === "checking") {
+    return (
+      <div className={cn("flex flex-col gap-6", className)} {...props}>
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">Checking your account...</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
+
+  if (status === "loading") {
+    return (
+      <div className={cn("flex flex-col gap-6", className)} {...props}>
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">Creating your account...</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+    )
   }
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>

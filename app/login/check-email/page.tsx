@@ -15,6 +15,7 @@ function LoginCheckEmailContent() {
   const [pollError, setPollError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [statusMessage, setStatusMessage] = useState("")
+  const [isNavigating, setIsNavigating] = useState(false)
 
   useEffect(() => {
     if (!aid) return
@@ -84,8 +85,8 @@ function LoginCheckEmailContent() {
         return
       }
 
+      setIsNavigating(true)
       router.push("/dashboard")
-      router.refresh()
     } catch {
       setPollError("Could not complete sign in.")
       setSubmitting(false)
@@ -114,9 +115,11 @@ function LoginCheckEmailContent() {
         <CardHeader>
           <CardTitle>{approved ? "Email address verified successfully." : "Check your email address for a code."}</CardTitle>
           <CardDescription>
-            {approved
+            {approved && !isNavigating
               ? "Your sign-in request is approved. Continue to your dashboard."
-              : `We sent a verification link to ${email}. Open it and choose “Yes, this was me”.`}
+              : approved && isNavigating
+                ? "Signing you in..."
+                : `We sent a verification link to ${email}. Open it and choose "Yes, this was me".`}
           </CardDescription>
         </CardHeader>
 
@@ -124,7 +127,9 @@ function LoginCheckEmailContent() {
           {statusMessage && !approved ? <p className="text-sm text-muted-foreground">{statusMessage}</p> : null}
           {pollError ? <p className="text-destructive text-sm">{pollError}</p> : null}
 
-          {approved ? (
+          {isNavigating ? (
+            <Button disabled>Signing you in...</Button>
+          ) : approved ? (
             <Button onClick={completeLogin} disabled={submitting}>
               {submitting ? "Signing in..." : "Continue to dashboard"}
             </Button>

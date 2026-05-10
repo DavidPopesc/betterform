@@ -128,6 +128,18 @@ export async function POST(
       
       return NextResponse.json({ isQuiz })
     }
+
+    // Handle form name update
+    if (body.name !== undefined) {
+      const name = String(body.name || '').slice(0, 200).trim()
+      
+      await prisma.form.update({
+        where: { id: formId },
+        data: { name: name || null },
+      })
+      
+      return NextResponse.json({ name })
+    }
     
     // Handle show score toggle
     if (body.showScore !== undefined) {
