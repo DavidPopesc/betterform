@@ -164,7 +164,7 @@ export function SignupForm({
                 </FieldDescription>
               </Field>
               <Field>
-                <Button type="submit" disabled={status === "loading"}>{status === "loading" ? "Creating account..." : "Create Account"}</Button>
+                <Button type="submit">Create Account</Button>
                 {status === "error" ? (
                   <FieldDescription className="text-destructive text-center">
                     Sign up failed. Please check your details and try again.

@@ -254,7 +254,7 @@ export function LoginForm({
                 <Input id="password" name="password" type="password" required />
               </Field>
               <Field>
-                <Button type="submit" disabled={status === "loading"}>Sign in</Button>
+                <Button type="submit">Sign in</Button>
                 {hasPasskeyRegistered ? (
                   <FieldDescription className="text-center">
                     A passkey is registered on this site. We attempted passkey sign in automatically.
