@@ -5,7 +5,29 @@ const FORM_ACCOUNT_COOKIE = 'form_account_uuid'
 const COOKIE_MAX_AGE = 365 * 2 * 24 * 60 * 60 // 2 years
 
 /**
- * Get or create a form account UUID from cookies
+ * Get the current form account UUID from cookies without modifying them.
+ */
+export async function getFormAccountId(): Promise<string | null> {
+  const cookieStore = await cookies()
+  return cookieStore.get(FORM_ACCOUNT_COOKIE)?.value ?? null
+}
+
+async function createFormAccountRecord(formAccountId: string) {
+  const { default: prisma } = await import('@/lib/db')
+  await prisma.formAccountUUID.create({
+    data: {
+      id: formAccountId,
+      ipAddresses: [],
+      verifiedEmails: [],
+      verifiedPhones: [],
+      formsViewed: [],
+      formsSubmitted: [],
+    },
+  })
+}
+
+/**
+ * Get or create a form account UUID from cookies.
  */
 export async function getOrCreateFormAccountId(): Promise<string> {
   const cookieStore = await cookies()
@@ -21,18 +43,7 @@ export async function getOrCreateFormAccountId(): Promise<string> {
       path: '/',
     })
 
-    // Create the account record in the database
-    const { default: prisma } = await import('@/lib/db')
-    await prisma.formAccountUUID.create({
-      data: {
-        id: formAccountId,
-        ipAddresses: [],
-        verifiedEmails: [],
-        verifiedPhones: [],
-        formsViewed: [],
-        formsSubmitted: [],
-      },
-    })
+    await createFormAccountRecord(formAccountId)
   }
 
   return formAccountId

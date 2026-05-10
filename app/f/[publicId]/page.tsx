@@ -34,11 +34,12 @@ export default async function PublicFormPage({
   
   let alreadySubmitted = false
   let closedReason = 'This form is not accepting responses.'
+  const { getFormAccountId } = await import('@/lib/form-account')
+  const formAccountId = await getFormAccountId()
   
   // Check if user already submitted (oneResponsePerUser)
-  if (!isClosed && form.oneResponsePerUser) {
-    const { getOrCreateFormAccountId, hasFormAccountSubmitted } = await import('@/lib/form-account')
-    const formAccountId = await getOrCreateFormAccountId()
+  if (!isClosed && form.oneResponsePerUser && formAccountId) {
+    const { hasFormAccountSubmitted } = await import('@/lib/form-account')
     alreadySubmitted = await hasFormAccountSubmitted(formAccountId, form.id)
     
     if (alreadySubmitted) {
@@ -46,11 +47,10 @@ export default async function PublicFormPage({
     }
   }
   
-  if (!isClosed && !alreadySubmitted) {
+  if (!isClosed && !alreadySubmitted && formAccountId) {
     // Update form account tracking for view
-    const { getOrCreateFormAccountId, updateFormAccountTracking, getClientIp, getDeviceMetrics } = await import('@/lib/form-account')
+    const { updateFormAccountTracking, getClientIp, getDeviceMetrics } = await import('@/lib/form-account')
     const { headers } = await import('next/headers')
-    const formAccountId = await getOrCreateFormAccountId()
     const headersList = await headers()
     const ip = getClientIp(headersList)
     const deviceMetrics = getDeviceMetrics(headersList)
