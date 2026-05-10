@@ -12,6 +12,12 @@ export default function LoginPage() {
         </Link>
         <LoginForm />
       </div>
+      
+      <footer className="mt-8 text-center text-xs text-slate-600 flex gap-4">
+        <Link href="/terms" className="hover:text-slate-900">Terms</Link>
+        <span>•</span>
+        <Link href="/privacy" className="hover:text-slate-900">Privacy</Link>
+      </footer>
     </div>
   )
 }

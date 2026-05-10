@@ -266,6 +266,8 @@ export default function Home() {
           <div>© 2026 Better Form. Built for real workflows.</div>
           <div className="flex gap-6">
             <Link href="/docs/api" className="hover:text-slate-900">API Documentation</Link>
+            <Link href="/terms" className="hover:text-slate-900">Terms of Service</Link>
+            <Link href="/privacy" className="hover:text-slate-900">Privacy Policy</Link>
           </div>
         </div>
       </footer>
