@@ -650,7 +650,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         </Card>
 
         <Card className="p-6">
-          <h4 className="font-semibold mb-4">Limited Public Response View</h4>
+          <h4 className="font-semibold mb-4">Shared Response View</h4>
           <p className="text-sm text-muted-foreground mb-4">
             Generate a private link with a UUID path that only shows chosen columns for matching rows.
           </p>
@@ -713,7 +713,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
 
           <div className="mt-4">
             <Button onClick={createLimitedView} disabled={!filterFieldId || !filterValue.trim() || visibleFieldIds.length === 0}>
-              Create limited public view page
+              Create shared response view
             </Button>
           </div>
 
@@ -726,11 +726,11 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
                     <div className="text-sm text-muted-foreground">{new Date(view.createdAt).toLocaleString()}</div>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/f/${publicId}/responses/view/${view.id}`)}>
+                    <Button variant="outline" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/responses/view/${view.id}`)}>
                       <Copy className="w-4 h-4 mr-2" />
                       Copy link
                     </Button>
-                    <Button variant="outline" onClick={() => window.open(`/f/${publicId}/responses/view/${view.id}`, '_blank')}>
+                    <Button variant="outline" onClick={() => window.open(`/responses/view/${view.id}`, '_blank')}>
                       <Eye className="w-4 h-4 mr-2" />
                       Open
                     </Button>

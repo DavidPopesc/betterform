@@ -11,10 +11,10 @@ export default function Home() {
       <main className="mx-auto flex min-h-svh max-w-6xl items-center">
         <div className="grid w-full gap-10 py-12 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
           <div>
-            <div className="mb-6 inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white/80 px-4 py-2 shadow-sm">
+            <Link href="/dashboard" className="mb-6 inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white/80 px-4 py-2 shadow-sm">
               <Image src="/betterformlogo.png" alt="Better Form logo" width={32} height={32} />
               <span className="text-sm font-medium text-slate-700">Better Form</span>
-            </div>
+            </Link>
 
             <h1 className="max-w-2xl text-5xl font-semibold tracking-tight text-slate-950 md:text-6xl">
               A better place to create and manage your forms.
@@ -65,7 +65,9 @@ export default function Home() {
                     Intake that actually stays organized
                   </div>
                 </div>
-                <Image src="/betterformlogo.png" alt="Better Form logo" width={40} height={40} />
+                <Link href="/dashboard" aria-label="Open dashboard">
+                  <Image src="/betterformlogo.png" alt="Better Form logo" width={40} height={40} />
+                </Link>
               </div>
 
               <div className="space-y-3">

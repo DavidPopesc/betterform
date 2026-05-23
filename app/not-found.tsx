@@ -9,10 +9,10 @@ export default function NotFound() {
       <Card className="w-full max-w-2xl overflow-hidden border-white/80 bg-white/90 p-0 shadow-xl">
         <div className="grid gap-0 md:grid-cols-[1.1fr_0.9fr]">
           <div className="p-8 md:p-10">
-            <div className="inline-flex items-center gap-3 rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-900">
+            <Link href="/dashboard" className="inline-flex items-center gap-3 rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-900">
               <Image src="/betterformlogo.png" alt="Better Form logo" width={24} height={24} />
               Better Form
-            </div>
+            </Link>
             <p className="mt-6 text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">404</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950">This page went missing.</h1>
             <p className="mt-4 max-w-lg text-sm leading-6 text-slate-600">

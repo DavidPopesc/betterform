@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -836,7 +837,9 @@ export default function PublicForm({
         )}
 
         <div className="mt-8 flex justify-center opacity-45">
-          <Image src="/betterformlogo.png" alt="Better Form logo" width={28} height={28} />
+          <Link href="/dashboard" aria-label="Open dashboard">
+            <Image src="/betterformlogo.png" alt="Better Form logo" width={28} height={28} />
+          </Link>
         </div>
       </div>
     </div>
