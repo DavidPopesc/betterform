@@ -30,6 +30,20 @@ export type Field = {
   maxFiles?: number
   points?: number
   correctAnswer?: string | string[]
+  scaleStyle?: 'numbers' | 'stars' | 'faces'
+  scaleMax?: number
+}
+
+function normalizeScaleField(field: Field): Field {
+  if (field.type === 'linear_scale') {
+    return { ...field, type: 'scale', scaleStyle: 'numbers', scaleMax: 5 }
+  }
+
+  if (field.type === 'rating') {
+    return { ...field, type: 'scale', scaleStyle: 'stars', scaleMax: Math.max(3, Math.min(field.scaleMax || 5, 5)) }
+  }
+
+  return field
 }
 
 export const FIELD_TYPES = [
@@ -43,8 +57,7 @@ export const FIELD_TYPES = [
   { value: 'file_upload', label: 'File upload' },
   { value: 'date', label: 'Date' },
   { value: 'time', label: 'Time' },
-  { value: 'linear_scale', label: 'Linear scale' },
-  { value: 'rating', label: 'Rating' },
+  { value: 'scale', label: 'Scale' },
   { value: 'text', label: 'Text' },
   { value: 'section', label: 'Section' },
 ] as const
@@ -56,6 +69,7 @@ export function getDefaultLabel(type: string): string {
   if (type === 'email') return 'Email address'
   if (type === 'phone') return 'Phone number'
   if (type === 'file_upload') return 'Upload files'
+  if (type === 'scale') return 'Scale question'
   return fieldType ? `${fieldType.label} question` : ''
 }
 
@@ -109,7 +123,7 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
   const [theme, setTheme] = React.useState(initialTheme)
   const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [activeTab, setActiveTab] = React.useState<Tab>('questions')
-  const [fields, setFields] = React.useState<Field[]>((initialSchema.fields as Field[]) ?? [])
+  const [fields, setFields] = React.useState<Field[]>(((initialSchema.fields as Field[]) ?? []).map(normalizeScaleField))
   // form name (stored in DB `name`), and fields (schema) stored separately
   const [formName, setFormName] = React.useState<string>(initialSchema?.name ?? initialSchema?.title ?? 'Untitled form')
   const [selected, setSelected] = React.useState<string | null>(fields[0]?.id ?? null)
@@ -138,7 +152,9 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
 
   React.useEffect(() => {
     // load fields but strip any legacy `form_title` entries from stored schema
-    const loaded = ((initialSchema.fields ?? []) as Field[]).filter((f) => f.type !== 'form_title')
+    const loaded = ((initialSchema.fields ?? []) as Field[])
+      .filter((f) => f.type !== 'form_title')
+      .map(normalizeScaleField)
     setFields(loaded.map((f, i) => ({ ...f, order: i })))
     setFormName(initialSchema?.name ?? 'Untitled form')
     setSelected((loaded[0]?.id) ?? null)
@@ -159,6 +175,10 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
     if (type === 'file_upload') {
       f.allowedFileTypes = []
       f.maxFiles = 1
+    }
+    if (type === 'scale') {
+      f.scaleStyle = 'numbers'
+      f.scaleMax = 5
     }
     // Set default points when quiz mode is enabled
     if (isQuiz && !['text', 'section', 'email', 'phone'].includes(type)) {
@@ -304,7 +324,12 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
       const res = await fetch(`/api/forms/${formId}/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: formName, schema: { fields } }),
+        body: JSON.stringify({
+          name: formName,
+          schema: {
+            fields,
+          },
+        }),
       })
       if (!res.ok) throw new Error('save-failed')
       // mark saved
@@ -465,6 +490,10 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                               // Initialize options for choice-based fields
                               if (['multiple_choice', 'checkboxes', 'dropdown'].includes(newType) && !f.options) {
                                 update.options = [{ id: `opt_${Math.random().toString(36).slice(2, 9)}`, label: 'Option 1' }]
+                              }
+                              if (newType === 'scale') {
+                                update.scaleStyle = 'numbers'
+                                update.scaleMax = 5
                               }
                               updateField(f.id, update)
                             }}
@@ -850,9 +879,50 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                           </div>
                         )}
 
-                        {(f.type === 'linear_scale' || f.type === 'rating') && (
-                          <div className="mt-4 text-sm text-muted-foreground">
-                            Scale configuration (1-5, 1-10, etc.)
+                        {f.type === 'scale' && (
+                          <div className="mt-4 space-y-3">
+                            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
+                              <div>
+                                <label className="mb-1 block text-xs text-muted-foreground">Style</label>
+                                <select
+                                  value={f.scaleStyle || 'numbers'}
+                                  onChange={(e) => {
+                                    const style = e.target.value as Field['scaleStyle']
+                                    updateField(f.id, {
+                                      scaleStyle: style,
+                                      scaleMax: style === 'numbers' ? 5 : style === 'stars' ? Math.max(3, Math.min(f.scaleMax || 5, 5)) : Math.max(2, Math.min(f.scaleMax || 5, 5)),
+                                    })
+                                  }}
+                                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                                >
+                                  <option value="numbers">Numbers (1-5)</option>
+                                  <option value="stars">Stars</option>
+                                  <option value="faces">Faces</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs text-muted-foreground">Count</label>
+                                <select
+                                  value={(f.scaleStyle || 'numbers') === 'numbers' ? 5 : f.scaleMax || 5}
+                                  onChange={(e) => updateField(f.id, { scaleMax: Number.parseInt(e.target.value, 10) })}
+                                  disabled={(f.scaleStyle || 'numbers') === 'numbers'}
+                                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50"
+                                >
+                                  {(f.scaleStyle || 'numbers') === 'stars' && [3, 4, 5].map((count) => (
+                                    <option key={count} value={count}>{count} stars</option>
+                                  ))}
+                                  {(f.scaleStyle || 'numbers') === 'faces' && [2, 3, 4, 5].map((count) => (
+                                    <option key={count} value={count}>{count} faces</option>
+                                  ))}
+                                  {(f.scaleStyle || 'numbers') === 'numbers' && <option value={5}>1-5</option>}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
+                              {(f.scaleStyle || 'numbers') === 'numbers' && 'Respondents will choose a number from 1 to 5.'}
+                              {(f.scaleStyle || 'numbers') === 'stars' && `Respondents will choose from ${f.scaleMax || 5} stars.`}
+                              {(f.scaleStyle || 'numbers') === 'faces' && `Respondents will choose from ${f.scaleMax || 5} faces.`}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -876,6 +946,10 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                               // Initialize options for choice-based fields
                               if (['multiple_choice', 'checkboxes', 'dropdown'].includes(newType) && !f.options) {
                                 update.options = [{ id: `opt_${Math.random().toString(36).slice(2, 9)}`, label: 'Option 1' }]
+                              }
+                              if (newType === 'scale') {
+                                update.scaleStyle = 'numbers'
+                                update.scaleMax = 5
                               }
                               updateField(f.id, update)
                             }}
@@ -1064,7 +1138,7 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
       )}
 
       {activeTab === 'responses' && <ResponsesTab formId={formId} fields={fields} />}
-      {activeTab === 'send' && <SendTab publicId={publicId} formName={formName} />}
+      {activeTab === 'send' && <SendTab publicId={publicId} formId={formId} formName={formName} fields={fields} />}
       {activeTab === 'settings' && (
         <SettingsTab formId={formId} theme={theme} onThemeChange={setTheme} onQuizModeChange={setIsQuiz} />
       )}

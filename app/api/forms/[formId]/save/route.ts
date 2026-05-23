@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSessionUser } from '@/lib/auth-server'
 import type { Prisma } from '@/lib/generated/prisma'
+import { parseFormSchema } from '@/lib/form-schema'
 
 export async function POST(
   req: Request,
@@ -33,7 +34,14 @@ export async function POST(
     const schema = body.schema
     const name = body.name
 
-    const data: { schema: Prisma.InputJsonValue; name?: string } = { schema: schema as Prisma.InputJsonValue }
+    const existingSchema = parseFormSchema(form.schema)
+    const nextSchema = {
+      ...existingSchema,
+      ...(typeof schema === 'object' && schema !== null ? schema : {}),
+      fields: Array.isArray(schema?.fields) ? schema.fields : existingSchema.fields,
+    }
+
+    const data: { schema: Prisma.InputJsonValue; name?: string } = { schema: nextSchema as Prisma.InputJsonValue }
     if (typeof name === 'string') data.name = name
 
     const updated = await prisma.form.update({

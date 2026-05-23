@@ -4,13 +4,22 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Copy, RefreshCw } from 'lucide-react'
+import { Copy, Eye, RefreshCw, Trash2 } from 'lucide-react'
 
 interface SettingsTabProps {
   formId: string
   theme: string
   onThemeChange: (theme: string) => void
   onQuizModeChange?: (isQuiz: boolean) => void
+}
+
+type LimitedPublicView = {
+  id: string
+  name: string
+  filterFieldId: string
+  filterValue: string
+  visibleFieldIds: string[]
+  createdAt: string
 }
 
 const THEMES = [
@@ -23,7 +32,12 @@ const THEMES = [
 
 export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeChange }: SettingsTabProps) {
   const [publicId, setPublicId] = useState<string>('')
-  const [formFields, setFormFields] = useState<Array<{ id: string; label: string; type: string }>>([])
+  const [formFields, setFormFields] = useState<Array<{ id: string; label: string; type: string; options?: Array<{ id: string; label: string }> }>>([])
+  const [views, setViews] = useState<LimitedPublicView[]>([])
+  const [viewName, setViewName] = useState('')
+  const [filterFieldId, setFilterFieldId] = useState('')
+  const [filterValue, setFilterValue] = useState('')
+  const [visibleFieldIds, setVisibleFieldIds] = useState<string[]>([])
   const [isQuiz, setIsQuiz] = useState(false)
   const [showScore, setShowScore] = useState(false)
   const [apiEnabled, setApiEnabled] = useState(false)
@@ -51,7 +65,8 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
       case 'date': return '2026-02-19'
       case 'time': return '14:30'
       case 'rating': return '5'
-      case 'linear_scale': return '7'
+      case 'linear_scale': return '5'
+      case 'scale': return '5'
       case 'multiple_choice': return 'Option A'
       case 'dropdown': return 'Option B'
       case 'checkboxes': return '["Option 1", "Option 2"]'
@@ -96,7 +111,8 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
           const fields = data.schema.fields.map((f: { id: string; label: string; type: string }) => ({
             id: f.id,
             label: f.label || 'Untitled',
-            type: f.type
+            type: f.type,
+            options: (f as { options?: Array<{ id: string; label: string }> }).options || [],
           }))
           setFormFields(fields)
         }
@@ -121,9 +137,22 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     }
   }, [formId, onThemeChange])
 
+  const loadSharing = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/forms/${formId}/sharing`)
+      if (!res.ok) return
+      const data = await res.json()
+      setViews(data.limitedPublicViews || [])
+      if (data.publicId) setPublicId(data.publicId)
+    } catch (err) {
+      console.error('Failed to load limited views:', err)
+    }
+  }, [formId])
+
   useEffect(() => {
     loadSettings()
-  }, [loadSettings])
+    loadSharing()
+  }, [loadSettings, loadSharing])
 
   // Debounce success message updates
   useEffect(() => {
@@ -396,6 +425,47 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     // API call is handled by the useEffect with debouncing
   }
 
+  async function createLimitedView() {
+    if (!filterFieldId || !filterValue.trim() || visibleFieldIds.length === 0) return
+    try {
+      const res = await fetch(`/api/forms/${formId}/sharing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_limited_public_view',
+          name: viewName || 'Limited public view',
+          filterFieldId,
+          filterValue,
+          visibleFieldIds,
+        }),
+      })
+      if (!res.ok) throw new Error('failed')
+      setViewName('')
+      setFilterFieldId('')
+      setFilterValue('')
+      setVisibleFieldIds([])
+      await loadSharing()
+    } catch (err) {
+      console.error('Failed to create limited public view:', err)
+    }
+  }
+
+  async function deleteLimitedView(viewId: string) {
+    const confirmed = window.confirm('Delete this limited public view link?')
+    if (!confirmed) return
+    try {
+      const res = await fetch(`/api/forms/${formId}/sharing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_limited_public_view', viewId }),
+      })
+      if (!res.ok) throw new Error('failed')
+      await loadSharing()
+    } catch (err) {
+      console.error('Failed to delete limited public view:', err)
+    }
+  }
+
   if (loading) {
     return (
       <div className="max-w-3xl w-full mx-auto px-4 py-8">
@@ -403,6 +473,9 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
       </div>
     )
   }
+
+  const shareableFields = formFields.filter((field) => field.type !== 'text' && field.type !== 'section')
+  const filterField = shareableFields.find((field) => field.id === filterFieldId)
 
   return (
     <div className="max-w-3xl w-full mx-auto px-4 py-8">
@@ -574,6 +647,102 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
             />
             <p className="text-xs text-muted-foreground mt-2">{successMessage.length} / 500 characters</p>
           </div>
+        </Card>
+
+        <Card className="p-6">
+          <h4 className="font-semibold mb-4">Limited Public Response View</h4>
+          <p className="text-sm text-muted-foreground mb-4">
+            Generate a private link with a UUID path that only shows chosen columns for matching rows.
+          </p>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <Input value={viewName} onChange={(e) => setViewName(e.target.value)} placeholder="View name" />
+            <select
+              value={filterFieldId}
+              onChange={(e) => {
+                setFilterFieldId(e.target.value)
+                setFilterValue('')
+              }}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">Choose row-match field</option>
+              {shareableFields.map((field) => (
+                <option key={field.id} value={field.id}>{field.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {filterField && (
+            <div className="mt-3">
+              {filterField.options && filterField.options.length > 0 ? (
+                <select
+                  value={filterValue}
+                  onChange={(e) => setFilterValue(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Choose matching value</option>
+                  {filterField.options.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <Input value={filterValue} onChange={(e) => setFilterValue(e.target.value)} placeholder="Matching value" />
+              )}
+            </div>
+          )}
+
+          <div className="mt-4">
+            <p className="mb-2 text-sm font-medium">Visible columns</p>
+            <div className="grid gap-2 md:grid-cols-2">
+              {shareableFields.map((field) => (
+                <label key={field.id} className="flex items-center gap-2 rounded-md border p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={visibleFieldIds.includes(field.id)}
+                    onChange={(e) => {
+                      setVisibleFieldIds((current) =>
+                        e.target.checked ? [...current, field.id] : current.filter((id) => id !== field.id)
+                      )
+                    }}
+                  />
+                  <span>{field.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <Button onClick={createLimitedView} disabled={!filterFieldId || !filterValue.trim() || visibleFieldIds.length === 0}>
+              Create limited public view page
+            </Button>
+          </div>
+
+          {views.length > 0 && (
+            <div className="mt-6 space-y-3 border-t pt-4">
+              {views.map((view) => (
+                <div key={view.id} className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="font-medium">{view.name}</div>
+                    <div className="text-sm text-muted-foreground">{new Date(view.createdAt).toLocaleString()}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/f/${publicId}/responses/view/${view.id}`)}>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy link
+                    </Button>
+                    <Button variant="outline" onClick={() => window.open(`/f/${publicId}/responses/view/${view.id}`, '_blank')}>
+                      <Eye className="w-4 h-4 mr-2" />
+                      Open
+                    </Button>
+                    <Button variant="outline" onClick={() => deleteLimitedView(view.id)}>
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
         
         <Card className="p-6">

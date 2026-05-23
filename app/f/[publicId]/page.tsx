@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import PublicForm from '@/components/PublicForm'
+import { getPublicFormPayload } from '@/lib/public-form'
 
 export default async function PublicFormPage({
   params,
@@ -8,85 +9,25 @@ export default async function PublicFormPage({
 }) {
   const { publicId } = await params
 
-  const { default: prisma } = await import('@/lib/db')
-  const form = await prisma.form.findUnique({
-    where: { publicId },
-    select: {
-      id: true,
-      name: true,
-      schema: true,
-      theme: true,
-      isQuiz: true,
-      showScore: true,
-      responsesEnabled: true,
-      responseDeadline: true,
-      successMessage: true,
-      oneResponsePerUser: true,
-    },
-  })
+  const payload = await getPublicFormPayload(publicId)
 
-  if (!form) {
+  if (!payload) {
     notFound()
   }
 
-  // Check if form is closed
-  const isClosed = !form.responsesEnabled || (form.responseDeadline ? new Date() > new Date(form.responseDeadline) : false)
-  
-  let alreadySubmitted = false
-  let closedReason = 'This form is not accepting responses.'
-  const { getFormAccountId } = await import('@/lib/form-account')
-  const formAccountId = await getFormAccountId()
-  
-  // Check if user already submitted (oneResponsePerUser)
-  if (!isClosed && form.oneResponsePerUser && formAccountId) {
-    const { hasFormAccountSubmitted } = await import('@/lib/form-account')
-    alreadySubmitted = await hasFormAccountSubmitted(formAccountId, form.id)
-    
-    if (alreadySubmitted) {
-      closedReason = 'You have already submitted a response to this form.'
-    }
-  }
-  
-  if (!isClosed && !alreadySubmitted && formAccountId) {
-    // Update form account tracking for view
-    const { updateFormAccountTracking, getClientIp, getDeviceMetrics } = await import('@/lib/form-account')
-    const { headers } = await import('next/headers')
-    const headersList = await headers()
-    const ip = getClientIp(headersList)
-    const deviceMetrics = getDeviceMetrics(headersList)
-    
-    await updateFormAccountTracking(formAccountId, {
-      ip,
-      deviceMetrics,
-      formViewed: form.id,
-    }).catch(() => {}) // Silently fail tracking
-  }
-  
-  const finalClosed = isClosed || alreadySubmitted
-  
-  if (!form.responsesEnabled) {
-    closedReason = 'This form is not accepting responses.'
-  } else if (form.responseDeadline && new Date() > new Date(form.responseDeadline)) {
-    closedReason = 'The response deadline has passed. This form is no longer accepting submissions.'
-  }
-  
-  const schema = form.schema as { fields?: Array<Record<string, unknown>> }
-  // Don't send fields to client if form is closed; type assertion safe as schema validation happens at form creation
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const fields = (finalClosed ? [] : (schema.fields || [])) as any[]
-  const theme = form.theme ?? 'slate'
-
   return (
     <PublicForm 
-      publicId={publicId} 
-      formName={form.name || 'Untitled form'} 
-      fields={fields}
-      theme={theme}
-      isQuiz={form.isQuiz ?? false}
-      showScore={form.showScore ?? false}
-      isClosed={finalClosed}
-      closedReason={closedReason}
-      successMessage={form.successMessage ?? 'Your response has been recorded.'}
+      publicId={payload.publicId} 
+      formName={payload.form.name || 'Untitled form'} 
+      fields={payload.fields}
+      theme={payload.theme}
+      isQuiz={payload.form.isQuiz ?? false}
+      showScore={payload.form.showScore ?? false}
+      isClosed={payload.isClosed}
+      closedReason={payload.closedReason}
+      successMessage={payload.form.successMessage ?? 'Your response has been recorded.'}
+      prefillValues={payload.prefill?.values}
+      hiddenFieldIds={payload.prefill?.hiddenFieldIds}
     />
   )
 }

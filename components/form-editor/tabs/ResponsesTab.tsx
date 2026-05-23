@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Download } from 'lucide-react'
+import { Download, Trash2 } from 'lucide-react'
 
 type ResponseData = {
   id: string
@@ -30,7 +30,6 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('summary')
   const [responses, setResponses] = useState<ResponseData[]>([])
   const [loading, setLoading] = useState(true)
-
   const loadResponses = useCallback(async () => {
     setLoading(true)
     try {
@@ -54,7 +53,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
     try {
       const res = await fetch(`/api/forms/${formId}/export`)
       if (!res.ok) throw new Error('Export failed')
-      
+
       const blob = await res.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -70,9 +69,48 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
   }
 
   const getOptionLabel = (fieldId: string, optionId: string) => {
-    const field = fields.find(f => f.id === fieldId)
-    const option = field?.options?.find(o => o.id === optionId)
+    const field = fields.find((item) => item.id === fieldId)
+    const option = field?.options?.find((item) => item.id === optionId)
     return option?.label || optionId
+  }
+
+  const formatResponseValue = (field: Field, value: unknown) => {
+    if (value === undefined || value === null || value === '') return '-'
+
+    if (['multiple_choice', 'dropdown'].includes(field.type)) {
+      return getOptionLabel(field.id, String(value))
+    }
+
+    if (field.type === 'checkboxes' && Array.isArray(value)) {
+      return value.map((item) => getOptionLabel(field.id, String(item))).join(', ')
+    }
+
+    if (field.type === 'file_upload' && Array.isArray(value)) {
+      return value
+        .map((item) =>
+          typeof item === 'object' && item !== null && 'filename' in item
+            ? String((item as { filename: unknown }).filename)
+            : String(item)
+        )
+        .join(', ')
+    }
+
+    return String(value)
+  }
+
+  async function deleteResponse(responseId: string) {
+    const confirmed = window.confirm('Delete this response permanently?')
+    if (!confirmed) return
+
+    try {
+      const res = await fetch(`/api/forms/${formId}/responses/${responseId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error('failed')
+      await loadResponses()
+    } catch (err) {
+      console.error('Failed to delete response:', err)
+    }
   }
 
   const renderSummary = () => {
@@ -87,42 +125,40 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
       )
     }
 
-    // Calculate statistics for each field
-    const stats = fields.filter(f => f.type !== 'text' && f.type !== 'section').map(field => {
-      const responseValues = responses
-        .map(r => r.response[field.id])
-        .filter(v => v !== undefined && v !== null && v !== '')
+    const stats = fields
+      .filter((field) => field.type !== 'text' && field.type !== 'section')
+      .map((field) => {
+        const responseValues = responses
+          .map((response) => response.response[field.id])
+          .filter((value) => value !== undefined && value !== null && value !== '')
 
-      const responseCount = responseValues.length
-      const responseRate = responses.length > 0 
-        ? ((responseCount / responses.length) * 100).toFixed(1) 
-        : '0'
+        const responseCount = responseValues.length
+        const responseRate = responses.length > 0 ? ((responseCount / responses.length) * 100).toFixed(1) : '0'
+        const distribution: Record<string, number> = {}
 
-      // For choice-based fields, calculate distribution
-      const distribution: Record<string, number> = {}
-      if (['multiple_choice', 'dropdown'].includes(field.type)) {
-        responseValues.forEach(val => {
-          const label = getOptionLabel(field.id, String(val))
-          distribution[label] = (distribution[label] || 0) + 1
-        })
-      } else if (field.type === 'checkboxes') {
-        responseValues.forEach(val => {
-          if (Array.isArray(val)) {
-            val.forEach(optId => {
-              const label = getOptionLabel(field.id, String(optId))
-              distribution[label] = (distribution[label] || 0) + 1
-            })
-          }
-        })
-      } else if (['linear_scale', 'rating'].includes(field.type)) {
-        responseValues.forEach(val => {
-          const key = String(val)
-          distribution[key] = (distribution[key] || 0) + 1
-        })
-      }
+        if (['multiple_choice', 'dropdown'].includes(field.type)) {
+          responseValues.forEach((value) => {
+            const label = getOptionLabel(field.id, String(value))
+            distribution[label] = (distribution[label] || 0) + 1
+          })
+        } else if (field.type === 'checkboxes') {
+          responseValues.forEach((value) => {
+            if (Array.isArray(value)) {
+              value.forEach((item) => {
+                const label = getOptionLabel(field.id, String(item))
+                distribution[label] = (distribution[label] || 0) + 1
+              })
+            }
+          })
+        } else if (['linear_scale', 'rating', 'scale'].includes(field.type)) {
+          responseValues.forEach((value) => {
+            const key = String(value)
+            distribution[key] = (distribution[key] || 0) + 1
+          })
+        }
 
-      return { field, responseCount, responseRate, distribution }
-    })
+        return { field, responseCount, responseRate, distribution }
+      })
 
     return (
       <div className="space-y-6">
@@ -133,7 +169,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
           </Card>
           <Card className="p-4">
             <div className="text-2xl font-bold">
-              {fields.filter(f => f.type !== 'text' && f.type !== 'section').length}
+              {fields.filter((field) => field.type !== 'text' && field.type !== 'section').length}
             </div>
             <div className="text-sm text-muted-foreground">Questions</div>
           </Card>
@@ -153,7 +189,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
                 {responseCount} responses ({responseRate}%)
               </p>
 
-              {Object.keys(distribution).length > 0 && (
+              {Object.keys(distribution).length > 0 ? (
                 <div className="space-y-2">
                   {Object.entries(distribution)
                     .sort(([, a], [, b]) => b - a)
@@ -168,16 +204,13 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
                             </span>
                           </div>
                           <div className="w-full bg-slate-200 rounded-full h-2">
-                            <div
-                              className="bg-primary h-2 rounded-full transition-all"
-                              style={{ width: `${percentage}%` }}
-                            />
+                            <div className="bg-primary h-2 rounded-full transition-all" style={{ width: `${percentage}%` }} />
                           </div>
                         </div>
                       )
                     })}
                 </div>
-              )}
+              ) : null}
             </Card>
           ))}
         </div>
@@ -194,55 +227,30 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
       )
     }
 
-    const questionFields = fields.filter(f => f.type !== 'text' && f.type !== 'section')
+    const questionFields = fields.filter((field) => field.type !== 'text' && field.type !== 'section')
 
     return (
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr className="border-b">
-              <th className="text-left p-3 font-semibold text-sm bg-slate-50">Timestamp</th>
-              {questionFields.map(field => (
-                <th key={field.id} className="text-left p-3 font-semibold text-sm bg-slate-50">
+              <th className="bg-slate-50 p-3 text-left text-sm font-semibold">Timestamp</th>
+              {questionFields.map((field) => (
+                <th key={field.id} className="bg-slate-50 p-3 text-left text-sm font-semibold">
                   {field.label}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {responses.map(response => (
+            {responses.map((response) => (
               <tr key={response.id} className="border-b hover:bg-slate-50">
-                <td className="p-3 text-sm">
-                  {new Date(response.createdAt).toLocaleString()}
-                </td>
-                {questionFields.map(field => {
-                  const value = response.response[field.id]
-                  let displayValue = '-'
-
-                  if (value !== undefined && value !== null && value !== '') {
-                    if (['multiple_choice', 'dropdown'].includes(field.type)) {
-                      displayValue = getOptionLabel(field.id, String(value))
-                    } else if (field.type === 'file_upload' && Array.isArray(value)) {
-                      displayValue = value
-                        .map((item) =>
-                          typeof item === 'object' && item !== null && 'filename' in item
-                            ? String((item as { filename: unknown }).filename)
-                            : String(item)
-                        )
-                        .join(', ')
-                    } else if (field.type === 'checkboxes' && Array.isArray(value)) {
-                      displayValue = value.map(v => getOptionLabel(field.id, String(v))).join(', ')
-                    } else {
-                      displayValue = String(value)
-                    }
-                  }
-
-                  return (
-                    <td key={field.id} className="p-3 text-sm">
-                      {displayValue}
-                    </td>
-                  )
-                })}
+                <td className="p-3 text-sm">{new Date(response.createdAt).toLocaleString()}</td>
+                {questionFields.map((field) => (
+                  <td key={field.id} className="p-3 text-sm">
+                    {formatResponseValue(field, response.response[field.id])}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>
@@ -262,46 +270,29 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
 
     return (
       <div className="space-y-6">
-        {responses.map((response, idx) => (
+        {responses.map((response, index) => (
           <Card key={response.id} className="p-6">
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="font-semibold">Response #{responses.length - idx}</h3>
-              <span className="text-sm text-muted-foreground">
-                {new Date(response.createdAt).toLocaleString()}
-              </span>
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <h3 className="font-semibold">Response #{responses.length - index}</h3>
+                <span className="text-sm text-muted-foreground">
+                  {new Date(response.createdAt).toLocaleString()}
+                </span>
+              </div>
+              <Button variant="outline" onClick={() => deleteResponse(response.id)}>
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete
+              </Button>
             </div>
             <div className="space-y-4">
-              {fields.filter(f => f.type !== 'text' && f.type !== 'section').map(field => {
-                const value = response.response[field.id]
-                let displayValue = '-'
-
-                if (value !== undefined && value !== null && value !== '') {
-                  if (['multiple_choice', 'dropdown'].includes(field.type)) {
-                    displayValue = getOptionLabel(field.id, String(value))
-                  } else if (field.type === 'file_upload' && Array.isArray(value)) {
-                    displayValue = value
-                      .map((item) =>
-                        typeof item === 'object' && item !== null && 'filename' in item
-                          ? String((item as { filename: unknown }).filename)
-                          : String(item)
-                      )
-                      .join(', ')
-                  } else if (field.type === 'checkboxes' && Array.isArray(value)) {
-                    displayValue = value.map(v => getOptionLabel(field.id, String(v))).join(', ')
-                  } else {
-                    displayValue = String(value)
-                  }
-                }
-
-                return (
+              {fields
+                .filter((field) => field.type !== 'text' && field.type !== 'section')
+                .map((field) => (
                   <div key={field.id}>
-                    <div className="text-sm font-medium text-muted-foreground mb-1">
-                      {field.label}
-                    </div>
-                    <div className="text-base">{displayValue}</div>
+                    <div className="mb-1 text-sm font-medium text-muted-foreground">{field.label}</div>
+                    <div className="text-base">{formatResponseValue(field, response.response[field.id])}</div>
                   </div>
-                )
-              })}
+                ))}
             </div>
           </Card>
         ))}
@@ -313,22 +304,13 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
     <div className="max-w-6xl w-full mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <div className="flex gap-2">
-          <Button
-            variant={activeSubTab === 'summary' ? 'default' : 'outline'}
-            onClick={() => setActiveSubTab('summary')}
-          >
+          <Button variant={activeSubTab === 'summary' ? 'default' : 'outline'} onClick={() => setActiveSubTab('summary')}>
             Summary
           </Button>
-          <Button
-            variant={activeSubTab === 'table' ? 'default' : 'outline'}
-            onClick={() => setActiveSubTab('table')}
-          >
+          <Button variant={activeSubTab === 'table' ? 'default' : 'outline'} onClick={() => setActiveSubTab('table')}>
             Table
           </Button>
-          <Button
-            variant={activeSubTab === 'individual' ? 'default' : 'outline'}
-            onClick={() => setActiveSubTab('individual')}
-          >
+          <Button variant={activeSubTab === 'individual' ? 'default' : 'outline'} onClick={() => setActiveSubTab('individual')}>
             Individual
           </Button>
         </div>

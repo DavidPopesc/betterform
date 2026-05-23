@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
+import { CloudBackup, CloudCheck, CloudOff } from 'lucide-react'
 
 export type Tab = 'questions' | 'responses' | 'send' | 'settings'
 
@@ -39,10 +40,18 @@ export default function TopBar({
     router.push('/dashboard')
   }
 
+  const status = isSaving
+    ? { label: 'Saving...', icon: CloudBackup }
+    : isDirty
+    ? { label: 'Unsaved changes', icon: CloudOff }
+    : { label: 'Changes saved', icon: CloudCheck }
+
+  const StatusIcon = status.icon
+
   return (
     <header className="sticky top-0 z-50 bg-white border-b">
       <div className="max-w-6xl mx-auto px-4">
-        <div className="flex flex-col gap-2 py-3 md:flex-row md:items-center md:justify-between">
+        <div className="py-3 md:grid md:grid-cols-[auto_1fr_auto] md:items-end md:gap-6">
           <div className="flex items-center justify-between gap-4">
             <a 
               href="/dashboard" 
@@ -53,17 +62,14 @@ export default function TopBar({
               <span className="text-2xl font-semibold">{title}</span>
             </a>
 
-            <div className="text-sm text-muted-foreground md:hidden">
-              {isSaving
-                ? 'Saving…'
-                : isDirty
-                ? 'Unsaved changes'
-                : 'Changes saved'}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground md:hidden">
+              <StatusIcon className="h-4 w-4" />
+              <span>{status.label}</span>
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-6">
-            <nav className="flex gap-4 overflow-x-auto whitespace-nowrap">
+          <div className="mt-3 flex items-end justify-between gap-6 md:mt-0">
+            <nav className="flex gap-4 overflow-x-auto whitespace-nowrap md:justify-center md:pb-1">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -79,12 +85,9 @@ export default function TopBar({
               ))}
             </nav>
 
-            <div className="text-sm text-muted-foreground hidden md:block">
-              {isSaving
-                ? 'Saving…'
-                : isDirty
-                ? 'Unsaved changes'
-                : 'Changes saved'}
+            <div className="hidden items-center justify-end gap-2 text-sm text-muted-foreground md:flex">
+              <StatusIcon className="h-4 w-4" />
+              <span>{status.label}</span>
             </div>
           </div>
         </div>

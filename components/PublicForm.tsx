@@ -1,13 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Lock, Mail, Check, X } from 'lucide-react'
+import { Angry, Check, Frown, Laugh, Lock, Mail, Meh, Smile, Star, X } from 'lucide-react'
 
 interface Field {
   id: string
@@ -21,6 +20,8 @@ interface Field {
   maxFiles?: number
   points?: number
   correctAnswer?: string | string[]
+  scaleStyle?: 'numbers' | 'stars' | 'faces'
+  scaleMax?: number
 }
 
 interface PublicFormProps {
@@ -33,47 +34,40 @@ interface PublicFormProps {
   isClosed?: boolean
   closedReason?: string
   successMessage?: string
+  prefillValues?: Record<string, unknown>
+  hiddenFieldIds?: string[]
 }
 
-const THEME_COLORS: Record<string, { bg: string; border: string; input: string; button: string; text: string }> = {
-    slate: {
-    bg: 'bg-slate-50',
-    border: 'border-slate-200',
-    input: 'focus:ring-slate-500',
-    button: 'bg-slate-600 hover:bg-slate-700',
-    text: 'text-slate-900',
-  },
-    blue: {
-    bg: 'bg-blue-50',
-    border: 'border-blue-200',
-    input: 'focus:ring-blue-500',
-    button: 'bg-blue-500 hover:bg-blue-600',
-    text: 'text-blue-900',
-  },
-  green: {
-    bg: 'bg-green-50',
-    border: 'border-green-200',
-    input: 'focus:ring-green-500',
-    button: 'bg-green-500 hover:bg-green-600',
-    text: 'text-green-900',
-  },
-  purple: {
-    bg: 'bg-purple-50',
-    border: 'border-purple-200',
-    input: 'focus:ring-purple-500',
-    button: 'bg-purple-500 hover:bg-purple-600',
-    text: 'text-purple-900',
-  },
-  pink: {
-    bg: 'bg-pink-50',
-    border: 'border-pink-200',
-    input: 'focus:ring-pink-500',
-    button: 'bg-pink-500 hover:bg-pink-600',
-    text: 'text-pink-900',
-  },
+const THEME_COLORS: Record<string, { bg: string }> = {
+  slate: { bg: 'bg-slate-50' },
+  blue: { bg: 'bg-blue-50' },
+  green: { bg: 'bg-green-50' },
+  purple: { bg: 'bg-purple-50' },
+  pink: { bg: 'bg-pink-50' },
 }
 
-export default function PublicForm({ publicId, formName, fields, theme = 'slate', isQuiz = false, showScore = false, isClosed = false, closedReason = 'This form is not accepting responses.', successMessage = 'Your response has been recorded.' }: PublicFormProps) {
+const FACE_ICONS = { Angry, Frown, Meh, Smile, Laugh }
+
+function getFaceSet(max: number): Array<keyof typeof FACE_ICONS> {
+  if (max === 2) return ['Frown', 'Smile']
+  if (max === 3) return ['Frown', 'Meh', 'Smile']
+  if (max === 4) return ['Angry', 'Frown', 'Smile', 'Laugh']
+  return ['Angry', 'Frown', 'Meh', 'Smile', 'Laugh']
+}
+
+export default function PublicForm({
+  publicId,
+  formName,
+  fields,
+  theme = 'slate',
+  isQuiz = false,
+  showScore = false,
+  isClosed = false,
+  closedReason = 'This form is not accepting responses.',
+  successMessage = 'Your response has been recorded.',
+  prefillValues = {},
+  hiddenFieldIds = [],
+}: PublicFormProps) {
   const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [responses, setResponses] = useState<Record<string, string | string[] | number>>({})
   const [fileResponses, setFileResponses] = useState<Record<string, File[]>>({})
@@ -81,44 +75,46 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
   const [submitted, setSubmitted] = useState(false)
   const [score, setScore] = useState<{ earned: number; total: number } | null>(null)
   const [error, setError] = useState('')
-
-  // Email verification states
   const [verifiedEmails, setVerifiedEmails] = useState<string[]>([])
   const [verificationSending, setVerificationSending] = useState(false)
   const [verificationSent, setVerificationSent] = useState<Record<string, boolean>>({})
   const [newEmailInput, setNewEmailInput] = useState<Record<string, string>>({})
+  const [currentPage, setCurrentPage] = useState(0)
 
-  // Check if any field requires verified email
-  const hasVerifiedEmailField = fields.some(f => f.type === 'email' && f.requireVerifiedEmail)
-
-  // localStorage key for this form
+  const hiddenFieldIdSet = new Set(hiddenFieldIds)
+  const hasVerifiedEmailField = fields.some((field) => field.type === 'email' && field.requireVerifiedEmail)
   const storageKey = `form-responses-${publicId}`
+  const prefilledSerialized = useMemo(() => JSON.stringify(prefillValues), [prefillValues])
 
-  // Load responses from localStorage on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey)
+      const prefilled = JSON.parse(prefilledSerialized) as Record<string, string | string[] | number>
+
       if (saved) {
-        const parsed = JSON.parse(saved)
-        setResponses(parsed)
+        const parsed = JSON.parse(saved) as Record<string, string | string[] | number>
+        setResponses({ ...parsed, ...prefilled })
+        return
+      }
+
+      if (Object.keys(prefilled).length > 0) {
+        setResponses(prefilled)
       }
     } catch (err) {
       console.error('Failed to load saved responses:', err)
     }
-  }, [storageKey])
+  }, [prefilledSerialized, storageKey])
 
-  // Save responses to localStorage whenever they change
   useEffect(() => {
-    if (Object.keys(responses).length > 0) {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(responses))
-      } catch (err) {
-        console.error('Failed to save responses:', err)
-      }
+    if (Object.keys(responses).length === 0) return
+
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(responses))
+    } catch (err) {
+      console.error('Failed to save responses:', err)
     }
   }, [responses, storageKey])
 
-  // Fetch verified emails on mount and poll every 5 seconds if verification is pending
   useEffect(() => {
     if (!hasVerifiedEmailField) return
 
@@ -127,29 +123,26 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
         const res = await fetch('/api/verify-email/account')
         const data = await res.json()
         if (data.verifiedEmails) {
-          setVerifiedEmails(prev => {
-            const newEmails = data.verifiedEmails as string[]
-            // Check if any new emails were verified
-            const hasNewEmails = newEmails.some(email => 
-              !prev.some(e => e.toLowerCase().trim() === email.toLowerCase().trim())
+          setVerifiedEmails((prev) => {
+            const nextEmails = data.verifiedEmails as string[]
+            const hasNewEmails = nextEmails.some(
+              (email) => !prev.some((existing) => existing.toLowerCase().trim() === email.toLowerCase().trim())
             )
-            
+
             if (hasNewEmails) {
-              // Auto-select newly verified email if there's a verification pending
-              const emailField = fields.find(f => f.type === 'email' && f.requireVerifiedEmail)
+              const emailField = fields.find((field) => field.type === 'email' && field.requireVerifiedEmail)
               if (emailField) {
                 const currentEmail = responses[emailField.id] as string
-                const wasJustVerified = newEmails.find(e => 
-                  e.toLowerCase().trim() === currentEmail?.toLowerCase().trim()
+                const wasJustVerified = nextEmails.find(
+                  (email) => email.toLowerCase().trim() === currentEmail?.toLowerCase().trim()
                 )
                 if (wasJustVerified && verificationSent[currentEmail]) {
-                  // Clear the verification sent badge
-                  setVerificationSent(prev => ({ ...prev, [currentEmail]: false }))
+                  setVerificationSent((current) => ({ ...current, [currentEmail]: false }))
                 }
               }
             }
-            
-            return newEmails
+
+            return nextEmails
           })
         }
       } catch (err) {
@@ -157,75 +150,79 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
       }
     }
 
-    // Initial fetch
     fetchVerifiedEmails()
 
-    // Poll every 5 seconds if there are pending verifications
-    const hasPendingVerifications = Object.values(verificationSent).some(v => v)
-    if (hasPendingVerifications) {
+    if (Object.values(verificationSent).some(Boolean)) {
       const interval = setInterval(fetchVerifiedEmails, 5000)
       return () => clearInterval(interval)
     }
-  }, [hasVerifiedEmailField, verificationSent, fields, responses])
+  }, [fields, hasVerifiedEmailField, responses, verificationSent])
 
-  // Listen for verification messages from popup
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'email-verified' && event.data.email) {
-        const verifiedEmail = event.data.email
-        
-        // Add to verified emails list (deduplicated)
-        setVerifiedEmails(prev => {
-          const emailLower = verifiedEmail.toLowerCase().trim()
-          const alreadyExists = prev.some(e => e.toLowerCase().trim() === emailLower)
-          if (alreadyExists) return prev
+        const verifiedEmail = event.data.email as string
+
+        setVerifiedEmails((prev) => {
+          const normalized = verifiedEmail.toLowerCase().trim()
+          if (prev.some((email) => email.toLowerCase().trim() === normalized)) {
+            return prev
+          }
           return [...prev, verifiedEmail]
         })
-        
-        // Clear verification sent state
-        setVerificationSent(prev => ({ ...prev, [verifiedEmail]: false }))
-        
-        // Find email field and auto-select the verified email
-        const emailField = fields.find(f => f.type === 'email' && f.requireVerifiedEmail)
+
+        setVerificationSent((prev) => ({ ...prev, [verifiedEmail]: false }))
+
+        const emailField = fields.find((field) => field.type === 'email' && field.requireVerifiedEmail)
         if (emailField) {
           handleInputChange(emailField.id, verifiedEmail)
         }
       }
     }
+
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
   }, [fields])
 
-  // Filter out section fields for navigation
-  const sections = fields.filter(f => f.type === 'section')
+  const sections = fields.filter((field) => field.type === 'section')
   const hasSections = sections.length > 0
-  const [currentPage, setCurrentPage] = useState(0)
 
-  // Get fields for current page
   const getPageFields = () => {
     if (!hasSections) return fields
 
     const sectionIndices = fields
-      .map((f, idx) => (f.type === 'section' ? idx : -1))
-      .filter(idx => idx !== -1)
+      .map((field, index) => (field.type === 'section' ? index : -1))
+      .filter((index) => index !== -1)
 
     if (currentPage === 0) {
-      // First page: all fields before first section
       return fields.slice(0, sectionIndices[0] || fields.length)
-    } else if (currentPage <= sectionIndices.length) {
-      // Middle pages: between sections
+    }
+
+    if (currentPage <= sectionIndices.length) {
       const start = sectionIndices[currentPage - 1] + 1
       const end = sectionIndices[currentPage] || fields.length
       return fields.slice(start, end)
     }
+
     return []
   }
 
   const pageFields = getPageFields()
+  const visiblePageFields = pageFields.filter((field) => !hiddenFieldIdSet.has(field.id))
   const isLastPage = !hasSections || currentPage >= sections.length
 
   const handleInputChange = (fieldId: string, value: string | string[] | number) => {
-    setResponses(prev => ({ ...prev, [fieldId]: value }))
+    setResponses((prev) => ({ ...prev, [fieldId]: value }))
+  }
+
+  const hasFieldValue = (field: Field) => {
+    if (field.type === 'file_upload') {
+      return (fileResponses[field.id] || []).length > 0
+    }
+
+    const value = responses[field.id]
+    if (Array.isArray(value)) return value.length > 0
+    return value !== undefined && value !== null && value !== ''
   }
 
   const handleFileChange = (fieldId: string, files: FileList | null, field: Field) => {
@@ -248,24 +245,23 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
   }
 
   const handleNext = () => {
-    // Validate required fields on current page
-    const missingRequired = pageFields.filter((f) => {
-      if (!f.required || f.type === 'text') return false
-      if (f.type === 'file_upload') return (fileResponses[f.id] || []).length === 0
-      return !responses[f.id]
-    })
+    const missingRequired = pageFields.filter(
+      (field) => field.required && field.type !== 'text' && field.type !== 'section' && !hasFieldValue(field)
+    )
+
     if (missingRequired.length > 0) {
       setError('Please fill in all required fields')
       return
     }
+
     setError('')
-    setCurrentPage(prev => prev + 1)
+    setCurrentPage((prev) => prev + 1)
     window.scrollTo(0, 0)
   }
 
   const handlePrevious = () => {
     setError('')
-    setCurrentPage(prev => prev - 1)
+    setCurrentPage((prev) => prev - 1)
     window.scrollTo(0, 0)
   }
 
@@ -273,31 +269,28 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
     let earned = 0
     let total = 0
 
-    fields.forEach(field => {
-      // Only score fields that have points and correct answers
+    fields.forEach((field) => {
       if (!field.points || !field.correctAnswer) return
 
       total += field.points
       const userResponse = responses[field.id]
 
-      // Check if answer is correct
       if (field.type === 'checkboxes' && Array.isArray(field.correctAnswer)) {
-        // For checkboxes, all correct answers must be selected
         const userAnswers = Array.isArray(userResponse) ? userResponse : []
         const correct = field.correctAnswer.sort().join(',') === userAnswers.sort().join(',')
         if (correct) earned += field.points
-      } else if (typeof field.correctAnswer === 'string' && typeof userResponse === 'string') {
-        // For text-based and single-choice questions - case-insensitive comparison with trimmed whitespace
-        const correctTrimmed = field.correctAnswer.trim().toLowerCase()
-        const userTrimmed = userResponse.trim().toLowerCase()
-        if (correctTrimmed === userTrimmed) {
+        return
+      }
+
+      if (typeof field.correctAnswer === 'string' && typeof userResponse === 'string') {
+        if (field.correctAnswer.trim().toLowerCase() === userResponse.trim().toLowerCase()) {
           earned += field.points
         }
-      } else {
-        // For option-based questions (multiple_choice, dropdown) - exact ID match
-        if (userResponse === field.correctAnswer) {
-          earned += field.points
-        }
+        return
+      }
+
+      if (userResponse === field.correctAnswer) {
+        earned += field.points
       }
     })
 
@@ -308,21 +301,16 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
     e.preventDefault()
     setError('')
 
-    // Validate all required fields
-    const missingRequired = fields.filter((f) => {
-      if (!f.required || f.type === 'text' || f.type === 'section') return false
-      if (f.type === 'file_upload') return (fileResponses[f.id] || []).length === 0
-      return !responses[f.id]
-    })
+    const missingRequired = fields.filter(
+      (field) => field.required && field.type !== 'text' && field.type !== 'section' && !hasFieldValue(field)
+    )
     if (missingRequired.length > 0) {
       setError('Please fill in all required fields')
       return
     }
 
-    // Calculate score if quiz mode
     if (isQuiz) {
-      const quizScore = calculateScore()
-      setScore(quizScore)
+      setScore(calculateScore())
     }
 
     setIsSubmitting(true)
@@ -343,7 +331,6 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
       const data = await res.json()
 
       if (!res.ok) {
-        // Handle specific error cases
         if (data.error === 'email_not_verified') {
           setError('Please verify your email address before submitting.')
         } else if (data.error === 'already_submitted') {
@@ -360,7 +347,6 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
         return
       }
 
-      // Clear saved form data on successful submission
       try {
         localStorage.removeItem(storageKey)
       } catch (err) {
@@ -378,29 +364,23 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
 
   if (submitted) {
     return (
-      <div className={`min-h-screen ${themeColors.bg} py-12 px-4`}>
-        <div className="max-w-2xl mx-auto">
-          <div className="mb-4 flex items-center justify-center">
-            <Link href="/" className="inline-flex items-center gap-3 rounded-full bg-white/90 px-4 py-2 shadow-sm ring-1 ring-slate-200">
-              <Image src="/betterformlogo.png" alt="Better Form logo" width={28} height={28} />
-              <span className="text-sm font-semibold text-slate-900">Better Form</span>
-            </Link>
-          </div>
+      <div className={`min-h-screen ${themeColors.bg} px-4 py-12`}>
+        <div className="mx-auto max-w-2xl">
           <Card className="p-8 text-center">
-            <div className="text-4xl mb-4">✓</div>
-            <h2 className="text-2xl font-semibold mb-2">Thank you!</h2>
+            <div className="mb-4 text-4xl">✓</div>
+            <h2 className="mb-2 text-2xl font-semibold">Thank you!</h2>
             <p className="text-muted-foreground">{successMessage}</p>
-            {isQuiz && showScore && score && (
-              <div className="mt-6 pt-6 border-t">
-                <h3 className="text-xl font-semibold mb-2">Your Score</h3>
-                <div className="text-3xl font-bold text-primary mb-2">
+            {isQuiz && showScore && score ? (
+              <div className="mt-6 border-t pt-6">
+                <h3 className="mb-2 text-xl font-semibold">Your Score</h3>
+                <div className="mb-2 text-3xl font-bold text-primary">
                   {score.earned} / {score.total}
                 </div>
                 <div className="text-muted-foreground">
                   {Math.round((score.earned / score.total) * 100)}% correct
                 </div>
               </div>
-            )}
+            ) : null}
           </Card>
         </div>
       </div>
@@ -409,18 +389,14 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
 
   const renderField = (field: Field) => {
     if (field.type === 'text') {
-      return (
-        <div className="whitespace-pre-wrap text-sm text-muted-foreground">
-          {field.label}
-        </div>
-      )
+      return <div className="whitespace-pre-wrap text-sm text-muted-foreground">{field.label}</div>
     }
 
     if (field.type === 'section') {
-      return null // Sections are handled by pagination
+      return null
     }
 
-    const value = responses[field.id] || ''
+    const value = responses[field.id] ?? ''
 
     switch (field.type) {
       case 'short_text':
@@ -440,14 +416,16 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
             onChange={(e) => handleInputChange(field.id, e.target.value)}
             placeholder="Your answer"
             required={field.required}
-            className="w-full border border-slate-200 rounded-md px-3 py-2 min-h-24 focus:outline-none focus:ring-2 focus:ring-primary"
+            className="min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
           />
         )
 
       case 'email':
         if (field.requireVerifiedEmail) {
-          const currentEmail = value as string
-          const isCurrentVerified = verifiedEmails.some(e => e.toLowerCase().trim() === currentEmail.toLowerCase().trim())
+          const currentEmail = typeof value === 'string' ? value : ''
+          const isCurrentVerified = verifiedEmails.some(
+            (email) => email.toLowerCase().trim() === currentEmail.toLowerCase().trim()
+          )
           const wasSent = verificationSent[currentEmail]
 
           const sendVerification = async (email: string) => {
@@ -460,7 +438,7 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
             try {
               const formIdResponse = await fetch(`/api/forms/public/${publicId}`)
               const formData = await formIdResponse.json()
-              
+
               const res = await fetch('/api/verify-email/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -470,16 +448,16 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
               const data = await res.json()
               if (data.success) {
                 if (data.alreadyVerified) {
-                  setVerifiedEmails(prev => {
-                    const emailLower = email.toLowerCase().trim()
-                    const alreadyExists = prev.some(e => e.toLowerCase().trim() === emailLower)
-                    if (alreadyExists) return prev
+                  setVerifiedEmails((prev) => {
+                    const normalized = email.toLowerCase().trim()
+                    if (prev.some((item) => item.toLowerCase().trim() === normalized)) {
+                      return prev
+                    }
                     return [...prev, email]
                   })
-                  // Auto-select the verified email
                   handleInputChange(field.id, email)
                 } else {
-                  setVerificationSent(prev => ({ ...prev, [email]: true }))
+                  setVerificationSent((prev) => ({ ...prev, [email]: true }))
                 }
                 setError('')
               } else {
@@ -494,27 +472,30 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
 
           return (
             <div className="space-y-3">
-              {verifiedEmails.length > 0 && (
+              {verifiedEmails.length > 0 ? (
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">Select a verified email:</p>
                   {verifiedEmails.map((email) => (
-                    <label key={email} className="flex items-center gap-3 p-3 border border-slate-200 rounded-md cursor-pointer hover:bg-slate-50">
+                    <label
+                      key={email}
+                      className="flex cursor-pointer items-center gap-3 rounded-md border border-slate-200 p-3 hover:bg-slate-50"
+                    >
                       <input
                         type="radio"
                         name={`email-select-${field.id}`}
                         value={email}
                         checked={currentEmail === email}
                         onChange={() => handleInputChange(field.id, email)}
-                        className="w-4 h-4"
+                        className="h-4 w-4"
                       />
-                      <Check className="w-4 h-4 text-green-600" />
+                      <Check className="h-4 w-4 text-green-600" />
                       <span>{email}</span>
                     </label>
                   ))}
-                  <p className="text-sm text-muted-foreground mt-2">Or add a new email:</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Or add a new email:</p>
                 </div>
-              )}
-              
+              ) : null}
+
               <div className="space-y-2">
                 <div className="flex gap-2">
                   <Input
@@ -522,13 +503,13 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
                     value={newEmailInput[field.id] || currentEmail || ''}
                     onChange={(e) => {
                       const email = e.target.value
-                      setNewEmailInput(prev => ({ ...prev, [field.id]: email }))
+                      setNewEmailInput((prev) => ({ ...prev, [field.id]: email }))
                       handleInputChange(field.id, email)
                     }}
                     placeholder="your.email@example.com"
                     required={field.required}
                   />
-                  {currentEmail && !isCurrentVerified && !wasSent && (
+                  {currentEmail && !isCurrentVerified && !wasSent ? (
                     <Button
                       type="button"
                       onClick={() => sendVerification(currentEmail)}
@@ -536,40 +517,40 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
                       variant="outline"
                       className="flex items-center gap-2"
                     >
-                      <Mail className="w-4 h-4" />
+                      <Mail className="h-4 w-4" />
                       {verificationSending ? 'Sending...' : 'Verify'}
                     </Button>
-                  )}
+                  ) : null}
                 </div>
-                
-                {isCurrentVerified && currentEmail && (
-                  <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded-md">
-                    <Check className="w-4 h-4" />
+
+                {isCurrentVerified && currentEmail ? (
+                  <div className="flex items-center gap-2 rounded-md bg-green-50 p-2 text-sm text-green-600">
+                    <Check className="h-4 w-4" />
                     <span>Email verified</span>
                   </div>
-                )}
-                
-                {!isCurrentVerified && currentEmail && wasSent && (
-                  <div className="text-sm text-amber-600 bg-amber-50 p-2 rounded-md">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Mail className="w-4 h-4" />
+                ) : null}
+
+                {!isCurrentVerified && currentEmail && wasSent ? (
+                  <div className="rounded-md bg-amber-50 p-2 text-sm text-amber-600">
+                    <div className="mb-1 flex items-center gap-2">
+                      <Mail className="h-4 w-4" />
                       <span className="font-medium">Verification email sent</span>
                     </div>
                     <p className="text-xs">Check your inbox and click the verification link. The page will update automatically.</p>
                   </div>
-                )}
-                
-                {field.required && !isCurrentVerified && currentEmail && (
+                ) : null}
+
+                {field.required && !isCurrentVerified && currentEmail ? (
                   <div className="flex items-center gap-2 text-sm text-amber-600">
-                    <X className="w-4 h-4" />
+                    <X className="h-4 w-4" />
                     <span>Email must be verified before submitting</span>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           )
         }
-        
+
         return (
           <Input
             type="email"
@@ -594,18 +575,18 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
       case 'multiple_choice':
         return (
           <div className="space-y-2">
-            {field.options?.map((opt) => (
-              <label key={opt.id} className="flex items-center gap-3 cursor-pointer">
+            {field.options?.map((option) => (
+              <label key={option.id} className="flex cursor-pointer items-center gap-3">
                 <input
                   type="radio"
                   name={field.id}
-                  value={opt.id}
-                  checked={value === opt.id}
+                  value={option.id}
+                  checked={value === option.id}
                   onChange={(e) => handleInputChange(field.id, e.target.value)}
                   required={field.required}
-                  className="w-4 h-4"
+                  className="h-4 w-4"
                 />
-                <span>{opt.label}</span>
+                <span>{option.label}</span>
               </label>
             ))}
           </div>
@@ -614,22 +595,22 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
       case 'checkboxes':
         return (
           <div className="space-y-2">
-            {field.options?.map((opt) => (
-              <label key={opt.id} className="flex items-center gap-3 cursor-pointer">
+            {field.options?.map((option) => (
+              <label key={option.id} className="flex cursor-pointer items-center gap-3">
                 <input
                   type="checkbox"
-                  value={opt.id}
-                  checked={Array.isArray(value) && value.includes(opt.id)}
+                  value={option.id}
+                  checked={Array.isArray(value) && value.includes(option.id)}
                   onChange={(e) => {
                     const current = Array.isArray(value) ? value : []
                     const updated = e.target.checked
-                      ? [...current, opt.id]
-                      : current.filter((v) => v !== opt.id)
+                      ? [...current, option.id]
+                      : current.filter((item) => item !== option.id)
                     handleInputChange(field.id, updated)
                   }}
-                  className="w-4 h-4"
+                  className="h-4 w-4"
                 />
-                <span>{opt.label}</span>
+                <span>{option.label}</span>
               </label>
             ))}
           </div>
@@ -641,12 +622,12 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
             value={value}
             onChange={(e) => handleInputChange(field.id, e.target.value)}
             required={field.required}
-            className="w-full border border-slate-200 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="">Choose</option>
-            {field.options?.map((opt) => (
-              <option key={opt.id} value={opt.id}>
-                {opt.label}
+            {field.options?.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -688,7 +669,7 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
             />
             <div className="text-xs text-muted-foreground">
               <p>Up to {maxFiles} file{maxFiles === 1 ? '' : 's'}, 10 MB max each.</p>
-              {allowedTypes.length > 0 ? <p>Allowed types: {allowedTypes.join(', ')}</p> : <p>Any file type allowed.</p>}
+              <p>{allowedTypes.length > 0 ? `Allowed types: ${allowedTypes.join(', ')}` : 'Any file type allowed.'}</p>
             </div>
             {selectedFiles.length > 0 ? (
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -708,17 +689,56 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
 
       case 'linear_scale':
       case 'rating':
+      case 'scale': {
+        const style = field.type === 'rating' ? 'stars' : field.type === 'linear_scale' ? 'numbers' : field.scaleStyle || 'numbers'
+        const max = style === 'numbers' ? 5 : Math.max(style === 'faces' ? 2 : 3, Math.min(field.scaleMax || 5, 5))
+
+        if (style === 'stars') {
+          return (
+            <div className="flex justify-center gap-2">
+              {Array.from({ length: max }, (_, index) => index + 1).map((num) => (
+                <button key={num} type="button" onClick={() => handleInputChange(field.id, num)} className="rounded-md p-1 transition hover:bg-slate-100">
+                  <Star className={`h-8 w-8 ${typeof value === 'number' && value >= num ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`} />
+                </button>
+              ))}
+            </div>
+          )
+        }
+
+        if (style === 'faces') {
+          const faces = getFaceSet(max)
+          return (
+            <div className="flex flex-wrap justify-center gap-3">
+              {faces.map((face, index) => {
+                const FaceIcon = FACE_ICONS[face]
+                const num = index + 1
+                return (
+                  <button
+                    key={face}
+                    type="button"
+                    onClick={() => handleInputChange(field.id, num)}
+                    className={`flex h-14 w-14 items-center justify-center rounded-full border-2 transition ${
+                      value === num ? 'border-primary bg-primary/10 text-primary' : 'border-slate-300 text-slate-500 hover:border-primary'
+                    }`}
+                    aria-label={face}
+                  >
+                    <FaceIcon className="h-7 w-7" />
+                  </button>
+                )
+              })}
+            </div>
+          )
+        }
+
         return (
-          <div className="flex gap-2">
-            {[1, 2, 3, 4, 5].map((num) => (
+          <div className="flex justify-center gap-2">
+            {Array.from({ length: max }, (_, index) => index + 1).map((num) => (
               <button
                 key={num}
                 type="button"
                 onClick={() => handleInputChange(field.id, num)}
-                className={`w-10 h-10 rounded border-2 transition ${
-                  value === num
-                    ? 'border-primary bg-primary text-white'
-                    : 'border-slate-300 hover:border-primary'
+                className={`h-10 w-10 rounded border-2 transition ${
+                  value === num ? 'border-primary bg-primary text-white' : 'border-slate-300 hover:border-primary'
                 }`}
               >
                 {num}
@@ -726,6 +746,7 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
             ))}
           </div>
         )
+      }
 
       default:
         return (
@@ -740,74 +761,64 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
   }
 
   return (
-    <div className={`min-h-screen ${themeColors.bg} py-12 px-4`}>
-      <div className="max-w-2xl mx-auto">
-        <div className="mb-4 flex items-center justify-center">
-          <Link href="/" className="inline-flex items-center gap-3 rounded-full bg-white/90 px-4 py-2 shadow-sm ring-1 ring-slate-200">
-            <Image src="/betterformlogo.png" alt="Better Form logo" width={28} height={28} />
-            <span className="text-sm font-semibold text-slate-900">Better Form</span>
-          </Link>
-        </div>
-        <Card className="p-8 mb-6">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Better Form</p>
-          <h1 className="text-3xl font-bold mb-2">{formName || 'Untitled form'}</h1>
-          
-          {isQuiz && (() => {
-            const totalPoints = fields.reduce((sum, f) => {
-              if (['text', 'section', 'email', 'phone'].includes(f.type)) return sum
-              return sum + (f.points || 0)
+    <div className={`min-h-screen ${themeColors.bg} px-4 py-12`}>
+      <div className="mx-auto max-w-2xl">
+
+        <Card className="mb-6 p-8">
+          <h1 className="mb-2 text-3xl font-bold">{formName || 'Untitled form'}</h1>
+          {isQuiz ? (() => {
+            const totalPoints = fields.reduce((sum, field) => {
+              if (['text', 'section', 'email', 'phone'].includes(field.type)) return sum
+              return sum + (field.points || 0)
             }, 0)
-            return totalPoints > 0 ? (
-              <div className="mt-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-900">
+            if (totalPoints === 0) return null
+            return (
+              <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
                 <span className="font-semibold">Quiz:</span> {totalPoints} {totalPoints === 1 ? 'point' : 'points'} total
               </div>
-            ) : null
-          })()}
-          {hasSections && (
+            )
+          })() : null}
+          {hasSections ? (
             <p className="text-sm text-muted-foreground">
               Page {currentPage + 1} of {sections.length + 1}
             </p>
-          )}
+          ) : null}
         </Card>
 
         {isClosed ? (
           <Card className="p-8 text-center">
             <Lock className="mx-auto mb-4" />
-            <h2 className="text-2xl font-semibold mb-2">Form Closed</h2>
-            <p className="text-muted-foreground">
-              {closedReason}
-            </p>
+            <h2 className="mb-2 text-2xl font-semibold">Form Closed</h2>
+            <p className="text-muted-foreground">{closedReason}</p>
           </Card>
         ) : (
           <form onSubmit={handleSubmit}>
             <div className="space-y-4">
-              {pageFields.map((field) => (
+              {visiblePageFields.map((field) => (
                 <Card key={field.id} className="p-6">
-                  <Label className="text-base mb-3 block">
+                  <Label className="mb-3 block text-base">
                     {field.label}
-                    {field.required && <span className="text-destructive ml-1">*</span>}
+                    {field.required ? <span className="ml-1 text-destructive">*</span> : null}
                   </Label>
-                  {field.description && (
-                    <p className="text-sm text-muted-foreground mb-3">{field.description}</p>
-                  )}
+                  {field.description ? <p className="mb-3 text-sm text-muted-foreground">{field.description}</p> : null}
                   {renderField(field)}
                 </Card>
               ))}
             </div>
 
-            {error && (
-              <div className="mt-4 p-4 bg-destructive/10 text-destructive rounded-md text-sm">
+            {error ? (
+              <div className="mt-4 rounded-md bg-destructive/10 p-4 text-sm text-destructive">
                 {error}
               </div>
-            )}
+            ) : null}
 
             <div className="mt-6 flex items-center justify-between">
               <div>
-                {currentPage > 0 && (
+                {currentPage > 0 ? (
                   <Button type="button" variant="outline" onClick={handlePrevious}>
                     Previous
                   </Button>
-                )}
+                ) : null}
               </div>
               <div>
                 {isLastPage ? (
@@ -824,9 +835,9 @@ export default function PublicForm({ publicId, formName, fields, theme = 'slate'
           </form>
         )}
 
-        <p className="mt-6 text-center text-xs text-slate-500">
-          Secure forms powered by Better Form.
-        </p>
+        <div className="mt-8 flex justify-center opacity-45">
+          <Image src="/betterformlogo.png" alt="Better Form logo" width={28} height={28} />
+        </div>
       </div>
     </div>
   )
