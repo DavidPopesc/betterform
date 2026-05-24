@@ -147,6 +147,28 @@ export default function SendTab({ formId, publicId, formName, fields }: SendTabP
     await navigator.clipboard.writeText(`${window.location.origin}/f/${prefillId}`);
   };
 
+  const getPrefillQrImageUrl = (prefillId: string) =>
+    `/api/qr?data=${encodeURIComponent(`${window.location.origin}/f/${prefillId}`)}`;
+
+  const downloadPrefillQR = async (prefillId: string, prefillName: string) => {
+    try {
+      const response = await fetch(getPrefillQrImageUrl(prefillId));
+      if (!response.ok) throw new Error("QR generation failed");
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `${(prefillName || "Prefill").replace(/[\\/:*?"<>|]+/g, "-")}-Better Form.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("Failed to download prefill QR code:", error);
+    }
+  };
+
   const deletePrefill = async (prefillId: string) => {
     const confirmed = window.confirm("Delete this pre-filled link?");
     if (!confirmed) return;
@@ -248,23 +270,42 @@ export default function SendTab({ formId, publicId, formName, fields }: SendTabP
                   {prefills.map((prefill) => (
                     <div
                       key={prefill.id}
-                      className="flex flex-col gap-3 rounded-lg border border-slate-200 p-4 md:flex-row md:items-center md:justify-between"
+                      className="flex flex-col gap-4 rounded-lg border border-slate-200 p-4"
                     >
-                      <div>
-                        <div className="font-medium">{prefill.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {new Date(prefill.createdAt).toLocaleString()}
+                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <div className="font-medium">{prefill.name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {new Date(prefill.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="outline" onClick={() => copyPrefillLink(prefill.id)}>
+                            <Copy className="w-4 h-4 mr-2" />
+                            Copy link
+                          </Button>
+                          <Button variant="outline" onClick={() => deletePrefill(prefill.id)}>
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => copyPrefillLink(prefill.id)}>
-                          <Copy className="w-4 h-4 mr-2" />
-                          Copy link
-                        </Button>
-                        <Button variant="outline" onClick={() => deletePrefill(prefill.id)}>
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </Button>
+
+                      <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:flex-row md:items-center">
+                        <div className="bg-white p-3 rounded-lg border border-slate-200">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={getPrefillQrImageUrl(prefill.id)} alt={`${prefill.name} QR code`} className="w-28 h-28" />
+                        </div>
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium">Prefilled QR code</div>
+                          <p className="text-sm text-muted-foreground">
+                            Scan to open this exact pre-filled link.
+                          </p>
+                          <Button variant="outline" onClick={() => downloadPrefillQR(prefill.id, prefill.name)}>
+                            <Download className="w-4 h-4 mr-2" />
+                            Download QR Code
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}

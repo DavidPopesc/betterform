@@ -107,15 +107,21 @@ export async function sendFormSubmissionAlert(params: {
   publicId: string
   responseId: string
   responses: Record<string, unknown>
+  responsePreview?: Array<{ label: string; value: string }>
   respondentEmail?: string | null
   submittedAt: Date
 }) {
-  const entries = Object.entries(params.responses).slice(0, 8)
+  const entries =
+    params.responsePreview?.slice(0, 8) ||
+    Object.entries(params.responses).slice(0, 8).map(([key, value]) => ({
+      label: key,
+      value: Array.isArray(value) ? value.join(", ") : String(value ?? "—"),
+    }))
   const fieldsHtml = entries
-    .map(([key, value]) => {
-      const displayValue = Array.isArray(value) ? value.join(", ") : String(value ?? "—")
+    .map(({ label, value }) => {
+      const displayValue = value || "—"
       return `<tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;vertical-align:top;">${key}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;vertical-align:top;">${label}</td>
         <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${displayValue}</td>
       </tr>`
     })

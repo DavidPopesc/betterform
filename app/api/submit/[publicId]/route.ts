@@ -17,9 +17,11 @@ import { sendFormSubmissionAlert } from '@/lib/email'
 type FileUploadField = {
   id: string
   type: string
+  label?: string
   requireVerifiedEmail?: boolean
   allowedFileTypes?: string[]
   maxFiles?: number
+  options?: Array<{ id: string; label: string }>
 }
 
 function sanitizeFilename(filename: string) {
@@ -385,12 +387,46 @@ export async function POST(
     }
 
     if (form.account?.email) {
+      const responsePreview = (schema.fields || [])
+        .filter((field) => field.type !== 'section')
+        .map((field) => {
+          const rawValue = storedResponses[field.id]
+          if (rawValue === undefined || rawValue === null || rawValue === '') return null
+
+          let displayValue = ''
+          if (['multiple_choice', 'dropdown'].includes(field.type)) {
+            const option = field.options?.find((item) => item.id === String(rawValue))
+            displayValue = option?.label || String(rawValue)
+          } else if (field.type === 'checkboxes' && Array.isArray(rawValue)) {
+            displayValue = rawValue
+              .map((item) => field.options?.find((option) => option.id === String(item))?.label || String(item))
+              .join(', ')
+          } else if (field.type === 'file_upload' && Array.isArray(rawValue)) {
+            displayValue = rawValue
+              .map((item) =>
+                typeof item === 'object' && item !== null && 'filename' in item
+                  ? String((item as { filename: unknown }).filename)
+                  : String(item)
+              )
+              .join(', ')
+          } else {
+            displayValue = Array.isArray(rawValue) ? rawValue.join(', ') : String(rawValue)
+          }
+
+          return {
+            label: field.label || field.id,
+            value: displayValue,
+          }
+        })
+        .filter((item): item is { label: string; value: string } => item !== null)
+
       sendFormSubmissionAlert({
         to: form.account.email,
         formName: form.name || 'Untitled form',
         publicId,
         responseId: response.id,
         responses: storedResponses,
+        responsePreview,
         respondentEmail,
         submittedAt: response.createdAt,
       }).catch((err) => {

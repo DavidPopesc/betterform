@@ -69,7 +69,7 @@ export default function TopBar({
           </div>
 
           <div className="mt-3 flex items-end justify-between gap-6 md:mt-0">
-            <nav className="flex gap-4 overflow-x-auto whitespace-nowrap md:justify-center md:pb-1">
+            <nav className="flex gap-4 overflow-x-auto whitespace-nowrap md:justify-center">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -85,7 +85,7 @@ export default function TopBar({
               ))}
             </nav>
 
-            <div className="hidden items-center justify-end gap-2 text-sm text-muted-foreground md:flex">
+            <div className="hidden items-center justify-end gap-2 pb-2 text-sm text-muted-foreground md:flex">
               <StatusIcon className="h-4 w-4" />
               <span>{status.label}</span>
             </div>

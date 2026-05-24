@@ -64,7 +64,7 @@ export const FIELD_TYPES = [
 
 export function getDefaultLabel(type: string): string {
   const fieldType = FIELD_TYPES.find(ft => ft.value === type)
-  if (type === 'text') return 'Description text'
+  if (type === 'text') return ''
   if (type === 'section') return 'Section break'
   if (type === 'email') return 'Email address'
   if (type === 'phone') return 'Phone number'
@@ -513,13 +513,22 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                         <div className="flex-1 space-y-3">
                         {/* Text field: single textarea for content */}
                         {f.type === 'text' ? (
-                          <textarea
-                            value={f.label}
-                            onChange={(e) => updateField(f.id, { label: e.target.value })}
-                            placeholder="Enter text to display (this field cannot be edited by respondents)"
-                            className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm min-h-20 focus:outline-none focus:ring-2 focus:ring-primary"
-                            onClick={(e) => e.stopPropagation()}
-                          />
+                          <div className="space-y-3">
+                            <Input
+                              value={f.label}
+                              onChange={(e) => updateField(f.id, { label: e.target.value })}
+                              placeholder="Title (optional)"
+                              className="text-base font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-b-2"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <textarea
+                              value={f.description || ''}
+                              onChange={(e) => updateField(f.id, { description: e.target.value })}
+                              placeholder="Description text"
+                              className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm min-h-20 focus:outline-none focus:ring-2 focus:ring-primary"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
                         ) : f.type === 'section' ? (
                           /* Section: just a visual divider */
                           <div className="border-t-2 border-slate-300 py-4 text-sm text-muted-foreground text-center">

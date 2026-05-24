@@ -390,7 +390,14 @@ export default function PublicForm({
 
   const renderField = (field: Field) => {
     if (field.type === 'text') {
-      return <div className="whitespace-pre-wrap text-sm text-muted-foreground">{field.label}</div>
+      return (
+        <div className="space-y-2">
+          {field.label ? <h3 className="text-lg font-semibold text-slate-900">{field.label}</h3> : null}
+          {field.description ? (
+            <div className="whitespace-pre-wrap text-sm text-muted-foreground">{field.description}</div>
+          ) : null}
+        </div>
+      )
     }
 
     if (field.type === 'section') {
@@ -797,11 +804,15 @@ export default function PublicForm({
             <div className="space-y-4">
               {visiblePageFields.map((field) => (
                 <Card key={field.id} className="p-6">
-                  <Label className="mb-3 block text-base">
-                    {field.label}
-                    {field.required ? <span className="ml-1 text-destructive">*</span> : null}
-                  </Label>
-                  {field.description ? <p className="mb-3 text-sm text-muted-foreground">{field.description}</p> : null}
+                  {field.type !== 'text' ? (
+                    <>
+                      <Label className="mb-3 block text-base">
+                        {field.label}
+                        {field.required ? <span className="ml-1 text-destructive">*</span> : null}
+                      </Label>
+                      {field.description ? <p className="mb-3 text-sm text-muted-foreground">{field.description}</p> : null}
+                    </>
+                  ) : null}
                   {renderField(field)}
                 </Card>
               ))}
