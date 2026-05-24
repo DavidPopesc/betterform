@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
 
 const FORM_ACCOUNT_COOKIE = 'form_account_uuid'
@@ -47,6 +48,23 @@ export async function getOrCreateFormAccountId(): Promise<string> {
   }
 
   return formAccountId
+}
+
+export function clearFormAccountCookie(response: NextResponse) {
+  response.cookies.set({
+    name: FORM_ACCOUNT_COOKIE,
+    value: '',
+    path: '/',
+    maxAge: 0,
+    expires: new Date(0),
+  })
+}
+
+export async function deleteFormAccountRecord(formAccountId: string) {
+  const { default: prisma } = await import('@/lib/db')
+  await prisma.formAccountUUID.deleteMany({
+    where: { id: formAccountId },
+  })
 }
 
 /**

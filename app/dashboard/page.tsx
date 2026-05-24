@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import CreateFormButton from '@/components/create-form-button'
+import SignOutButton from '@/components/sign-out-button'
 import { getSessionUser } from '@/lib/auth-server'
 import DashboardClient from '@/components/dashboard-client'
 
@@ -28,6 +29,7 @@ export default async function DashboardPage() {
             id="search-input"
             className="hidden sm:block rounded-md border px-3 py-2 text-sm shadow-sm"
           />
+          <SignOutButton />
           <CreateFormButton label="Create" />
         </div>
       </header>

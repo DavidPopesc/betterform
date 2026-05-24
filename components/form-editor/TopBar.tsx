@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { CloudBackup, CloudCheck, CloudOff } from 'lucide-react'
 
+import SignOutButton from '@/components/sign-out-button'
+
 export type Tab = 'questions' | 'responses' | 'send' | 'settings'
 
 interface TopBarProps {
@@ -88,6 +90,10 @@ export default function TopBar({
             <div className="hidden items-center justify-end gap-2 pb-2 text-sm text-muted-foreground md:flex">
               <StatusIcon className="h-4 w-4" />
               <span>{status.label}</span>
+            </div>
+
+            <div className="hidden pb-2 md:block">
+              <SignOutButton />
             </div>
           </div>
         </div>
