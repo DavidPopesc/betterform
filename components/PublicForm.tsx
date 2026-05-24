@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -81,6 +81,8 @@ export default function PublicForm({
   const [verificationSent, setVerificationSent] = useState<Record<string, boolean>>({})
   const [newEmailInput, setNewEmailInput] = useState<Record<string, string>>({})
   const [currentPage, setCurrentPage] = useState(0)
+  const suppressSubmitRef = useRef(false)
+  const suppressSubmitTimeoutRef = useRef<number | null>(null)
 
   const hiddenFieldIdSet = new Set(hiddenFieldIds)
   const hasVerifiedEmailField = fields.some((field) => field.type === 'email' && field.requireVerifiedEmail)
@@ -256,6 +258,18 @@ export default function PublicForm({
     }
 
     setError('')
+
+    if (hasSections && currentPage + 1 === sections.length) {
+      suppressSubmitRef.current = true
+      if (suppressSubmitTimeoutRef.current !== null) {
+        window.clearTimeout(suppressSubmitTimeoutRef.current)
+      }
+      suppressSubmitTimeoutRef.current = window.setTimeout(() => {
+        suppressSubmitRef.current = false
+        suppressSubmitTimeoutRef.current = null
+      }, 350)
+    }
+
     setCurrentPage((prev) => prev + 1)
     window.scrollTo(0, 0)
   }
@@ -300,6 +314,7 @@ export default function PublicForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (suppressSubmitRef.current) return
     setError('')
 
     const missingRequired = fields.filter(
@@ -716,7 +731,7 @@ export default function PublicForm({
         if (style === 'faces') {
           const faces = getFaceSet(max)
           return (
-            <div className="flex flex-wrap justify-center gap-3">
+            <div className="grid grid-cols-5 justify-items-center gap-1.5 sm:flex sm:flex-wrap sm:justify-center sm:gap-3">
               {faces.map((face, index) => {
                 const FaceIcon = FACE_ICONS[face]
                 const num = index + 1
@@ -725,12 +740,12 @@ export default function PublicForm({
                     key={face}
                     type="button"
                     onClick={() => handleInputChange(field.id, num)}
-                    className={`flex h-14 w-14 items-center justify-center rounded-full border-2 transition ${
+                    className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition sm:h-14 sm:w-14 ${
                       value === num ? 'border-primary bg-primary/10 text-primary' : 'border-slate-300 text-slate-500 hover:border-primary'
                     }`}
                     aria-label={face}
                   >
-                    <FaceIcon className="h-7 w-7" />
+                    <FaceIcon className="h-5 w-5 sm:h-7 sm:w-7" />
                   </button>
                 )
               })}
