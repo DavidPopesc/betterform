@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Copy, Eye, RefreshCw, Trash2 } from 'lucide-react'
+import { Copy, Download, Eye, RefreshCw, Trash2 } from 'lucide-react'
 
 interface SettingsTabProps {
   formId: string
@@ -55,6 +55,12 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const webhookUrlTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const deadlineDate = responseDeadline ? responseDeadline.slice(0, 10) : ''
   const deadlineTime = responseDeadline ? responseDeadline.slice(11, 16) : ''
+  const sharedViewUrl = (viewId: string) => `/responses/view/${viewId}`
+  const getSharedViewQrImageUrl = (viewId: string) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return `/api/qr?data=${encodeURIComponent(`${origin}${sharedViewUrl(viewId)}`)}`
+  }
+  const getSafeFileName = (value: string) => value.trim().replace(/[\\/:*?"<>|]+/g, '-') || 'Shared response view'
 
   // Generate example field values for API documentation
   const generateFieldExample = (field: { id: string; label: string; type: string }): string => {
@@ -466,6 +472,25 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     }
   }
 
+  async function downloadSharedViewQr(viewId: string, viewName: string) {
+    try {
+      const response = await fetch(getSharedViewQrImageUrl(viewId))
+      if (!response.ok) throw new Error('QR generation failed')
+
+      const blob = await response.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = `${getSafeFileName(viewName)}-Better Form.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(blobUrl)
+    } catch (err) {
+      console.error('Failed to download shared view QR code:', err)
+    }
+  }
+
   if (loading) {
     return (
       <div className="max-w-3xl w-full mx-auto px-4 py-8">
@@ -720,26 +745,44 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
           {views.length > 0 && (
             <div className="mt-6 space-y-3 border-t pt-4">
               {views.map((view) => (
-                <div key={view.id} className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <div className="font-medium">{view.name}</div>
-                    <div className="text-sm text-muted-foreground">{new Date(view.createdAt).toLocaleString()}</div>
+                <Fragment key={view.id}>
+                  <div className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="font-medium">{view.name}</div>
+                      <div className="text-sm text-muted-foreground">{new Date(view.createdAt).toLocaleString()}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => navigator.clipboard.writeText(`${window.location.origin}${sharedViewUrl(view.id)}`)}>
+                        <Copy className="w-4 h-4 mr-2" />
+                        Copy link
+                      </Button>
+                      <Button variant="outline" onClick={() => window.open(sharedViewUrl(view.id), '_blank')}>
+                        <Eye className="w-4 h-4 mr-2" />
+                        Open
+                      </Button>
+                      <Button variant="outline" onClick={() => deleteLimitedView(view.id)}>
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/responses/view/${view.id}`)}>
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copy link
-                    </Button>
-                    <Button variant="outline" onClick={() => window.open(`/responses/view/${view.id}`, '_blank')}>
-                      <Eye className="w-4 h-4 mr-2" />
-                      Open
-                    </Button>
-                    <Button variant="outline" onClick={() => deleteLimitedView(view.id)}>
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete
-                    </Button>
+                  <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:flex-row md:items-center">
+                    <div className="bg-white p-3 rounded-lg border border-slate-200">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={getSharedViewQrImageUrl(view.id)} alt={`${view.name} QR code`} className="w-28 h-28" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Shared response QR code</div>
+                      <p className="text-sm text-muted-foreground">
+                        Scan to open this exact private response view.
+                      </p>
+                      <Button variant="outline" onClick={() => downloadSharedViewQr(view.id, view.name)}>
+                        <Download className="w-4 h-4 mr-2" />
+                        Download QR Code
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                </Fragment>
               ))}
             </div>
           )}
