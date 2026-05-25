@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { formatLocationSummary, type SubmissionLocation } from '@/lib/location'
-import { Download, Trash2 } from 'lucide-react'
+import { Download, Pencil, Save, Trash2, X } from 'lucide-react'
 
 type ResponseData = {
   id: string
@@ -31,6 +31,9 @@ type SubTab = 'summary' | 'table' | 'individual'
 export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('summary')
   const [responses, setResponses] = useState<ResponseData[]>([])
+  const [editingResponseId, setEditingResponseId] = useState<string | null>(null)
+  const [draftResponse, setDraftResponse] = useState<Record<string, unknown>>({})
+  const [savingResponseId, setSavingResponseId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const loadResponses = useCallback(async () => {
     setLoading(true)
@@ -113,6 +116,145 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
     } catch (err) {
       console.error('Failed to delete response:', err)
     }
+  }
+
+  function beginEditing(response: ResponseData) {
+    setEditingResponseId(response.id)
+    setDraftResponse(JSON.parse(JSON.stringify(response.response)) as Record<string, unknown>)
+  }
+
+  function cancelEditing() {
+    setEditingResponseId(null)
+    setDraftResponse({})
+  }
+
+  function updateDraftField(fieldId: string, value: unknown) {
+    setDraftResponse((current) => ({ ...current, [fieldId]: value }))
+  }
+
+  async function saveResponse(responseId: string) {
+    setSavingResponseId(responseId)
+    try {
+      const res = await fetch(`/api/forms/${formId}/responses/${responseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response: draftResponse }),
+      })
+
+      if (!res.ok) throw new Error('failed')
+
+      const data = await res.json()
+      setResponses((current) =>
+        current.map((response) =>
+          response.id === responseId ? { ...response, response: data.response.response } : response
+        )
+      )
+      cancelEditing()
+    } catch (err) {
+      console.error('Failed to update response:', err)
+    } finally {
+      setSavingResponseId(null)
+    }
+  }
+
+  function renderEditableField(field: Field, response: ResponseData) {
+    const value = draftResponse[field.id]
+
+    if (field.type === 'file_upload') {
+      return <div className="text-base">{formatResponseValue(field, response.response[field.id])}</div>
+    }
+
+    if (['multiple_choice', 'dropdown'].includes(field.type)) {
+      return (
+        <select
+          value={typeof value === 'string' ? value : ''}
+          onChange={(e) => updateDraftField(field.id, e.target.value)}
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="">Select an option</option>
+          {field.options?.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      )
+    }
+
+    if (field.type === 'checkboxes') {
+      const selectedValues = Array.isArray(value) ? value.map(String) : []
+      return (
+        <div className="space-y-2">
+          {field.options?.map((option) => (
+            <label key={option.id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={selectedValues.includes(option.id)}
+                onChange={(e) => {
+                  const nextValues = e.target.checked
+                    ? [...selectedValues, option.id]
+                    : selectedValues.filter((item) => item !== option.id)
+                  updateDraftField(field.id, nextValues)
+                }}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
+      )
+    }
+
+    if (field.type === 'paragraph') {
+      return (
+        <textarea
+          value={typeof value === 'string' ? value : ''}
+          onChange={(e) => updateDraftField(field.id, e.target.value)}
+          className="min-h-24 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      )
+    }
+
+    if (['scale', 'rating', 'linear_scale'].includes(field.type)) {
+      return (
+        <input
+          type="number"
+          value={typeof value === 'number' || typeof value === 'string' ? String(value) : ''}
+          onChange={(e) => updateDraftField(field.id, e.target.value === '' ? '' : Number(e.target.value))}
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      )
+    }
+
+    if (field.type === 'date') {
+      return (
+        <input
+          type="date"
+          value={typeof value === 'string' ? value : ''}
+          onChange={(e) => updateDraftField(field.id, e.target.value)}
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      )
+    }
+
+    if (field.type === 'time') {
+      return (
+        <input
+          type="time"
+          value={typeof value === 'string' ? value : ''}
+          onChange={(e) => updateDraftField(field.id, e.target.value)}
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+      )
+    }
+
+    return (
+      <input
+        type={field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : 'text'}
+        value={typeof value === 'string' || typeof value === 'number' ? String(value) : ''}
+        onChange={(e) => updateDraftField(field.id, e.target.value)}
+        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+      />
+    )
   }
 
   const renderSummary = () => {
@@ -290,10 +432,29 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
                   {new Date(response.createdAt).toLocaleString()}
                 </span>
               </div>
-              <Button variant="outline" onClick={() => deleteResponse(response.id)}>
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </Button>
+              <div className="flex gap-2">
+                {editingResponseId === response.id ? (
+                  <>
+                    <Button variant="outline" onClick={cancelEditing}>
+                      <X className="w-4 h-4 mr-2" />
+                      Cancel
+                    </Button>
+                    <Button onClick={() => saveResponse(response.id)} disabled={savingResponseId === response.id}>
+                      <Save className="w-4 h-4 mr-2" />
+                      {savingResponseId === response.id ? 'Saving...' : 'Save'}
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="outline" onClick={() => beginEditing(response)}>
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Edit
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => deleteResponse(response.id)}>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </Button>
+              </div>
             </div>
             <div className="space-y-4">
               {response.submissionLocation ? (
@@ -310,7 +471,9 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
                 .map((field) => (
                   <div key={field.id}>
                     <div className="mb-1 text-sm font-medium text-muted-foreground">{field.label}</div>
-                    <div className="text-base">{formatResponseValue(field, response.response[field.id])}</div>
+                    {editingResponseId === response.id
+                      ? renderEditableField(field, response)
+                      : <div className="text-base">{formatResponseValue(field, response.response[field.id])}</div>}
                   </div>
                 ))}
             </div>
