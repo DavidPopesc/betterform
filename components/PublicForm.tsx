@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Angry, Check, Frown, Laugh, Lock, Mail, Meh, Smile, Star, X } from 'lucide-react'
+import { Annoyed, Check, Frown, Laugh, Lock, Mail, Meh, Smile, Star, X } from 'lucide-react'
 
 interface Field {
   id: string
@@ -47,7 +47,7 @@ const THEME_COLORS: Record<string, { bg: string }> = {
   pink: { bg: 'bg-pink-50' },
 }
 
-const FACE_ICONS = { Angry, Frown, Meh, Smile, Laugh }
+const FACE_ICONS = { Annoyed, Frown, Meh, Smile, Laugh }
 
 type FaceOption = {
   icon: keyof typeof FACE_ICONS
@@ -75,7 +75,7 @@ function getFaceSet(max: number): FaceOption[] {
     return [
       { icon: 'Laugh', label: 'Laugh', value: 4 },
       { icon: 'Smile', label: 'Smile', value: 3 },
-      { icon: 'Angry', label: 'Annoyed', value: 2 },
+      { icon: 'Annoyed', label: 'Annoyed', value: 2 },
       { icon: 'Frown', label: 'Frown', value: 1 },
     ]
   }
@@ -84,7 +84,7 @@ function getFaceSet(max: number): FaceOption[] {
     { icon: 'Laugh', label: 'Laugh', value: 5 },
     { icon: 'Smile', label: 'Smile', value: 4 },
     { icon: 'Meh', label: 'Meh', value: 3 },
-    { icon: 'Angry', label: 'Annoyed', value: 2 },
+    { icon: 'Annoyed', label: 'Annoyed', value: 2 },
     { icon: 'Frown', label: 'Frown', value: 1 },
   ]
 }
