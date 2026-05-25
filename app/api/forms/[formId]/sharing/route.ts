@@ -27,11 +27,32 @@ export async function GET(
     }
 
     const schema = parseFormSchema(form.schema)
+    const visits = await prisma.limitedPublicViewVisit.findMany({
+      where: { formId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        viewId: true,
+        viewName: true,
+        createdAt: true,
+        userAgent: true,
+      },
+    })
+    const limitedPublicViewStats = schema.limitedPublicViews.map((view) => {
+      const matchingVisits = visits.filter((visit) => visit.viewId === view.id)
+      return {
+        viewId: view.id,
+        totalViews: matchingVisits.length,
+        lastViewedAt: matchingVisits[0]?.createdAt ?? null,
+        recentVisits: matchingVisits.slice(0, 10),
+      }
+    })
 
     return NextResponse.json({
       publicId: form.publicId,
       prefills: schema.prefills,
       limitedPublicViews: schema.limitedPublicViews,
+      limitedPublicViewStats,
     })
   } catch (error) {
     console.error('Sharing config fetch error:', error)
@@ -127,6 +148,50 @@ export async function POST(
       return NextResponse.json({
         view,
         url: `/f/${form.publicId}/responses/view/${view.id}`,
+      })
+    }
+
+    if (action === 'update_limited_public_view') {
+      const viewId = String(body.viewId || '').trim()
+      const name = String(body.name || 'Limited public view').trim()
+      const filterFieldId = String(body.filterFieldId || '').trim()
+      const filterValue = String(body.filterValue || '').trim()
+      const visibleFieldIds = Array.isArray(body.visibleFieldIds)
+        ? body.visibleFieldIds.map((value: unknown) => String(value))
+        : []
+
+      if (!viewId || !filterFieldId || !filterValue || visibleFieldIds.length === 0) {
+        return NextResponse.json({ error: 'missing_fields' }, { status: 400 })
+      }
+
+      const existingView = schema.limitedPublicViews.find((view) => view.id === viewId)
+      if (!existingView) {
+        return NextResponse.json({ error: 'view_not_found' }, { status: 404 })
+      }
+
+      const nextSchema = withUpdatedSchema(form.schema, {
+        limitedPublicViews: schema.limitedPublicViews.map((view) =>
+          view.id === viewId
+            ? {
+                ...view,
+                name: name || view.name,
+                filterFieldId,
+                filterValue,
+                visibleFieldIds,
+                updatedAt: new Date().toISOString(),
+              }
+            : view
+        ),
+      })
+
+      await prisma.form.update({
+        where: { id: formId },
+        data: { schema: nextSchema as Prisma.InputJsonValue },
+      })
+
+      return NextResponse.json({
+        ok: true,
+        url: `/f/${form.publicId}/responses/view/${viewId}`,
       })
     }
 

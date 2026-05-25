@@ -81,12 +81,19 @@ model Form {
 
   // Success message customization
   successMessage String  @default("Your response has been recorded.")
+  allowAnotherResponse Boolean @default(false)
 
   // Response restrictions
   responsesEnabled   Boolean     @default(true)
   responseDeadline   DateTime?
   oneResponsePerEmail Boolean    @default(false)
   oneResponsePerUser  Boolean    @default(false)
+  requireLocationOnSubmit Boolean @default(false)
+  geoLockEnabled Boolean @default(false)
+  geoLockLatitude Float?
+  geoLockLongitude Float?
+  geoLockRadiusMeters Int?
+  notifyOnLimitedViewVisit Boolean @default(false)
 
   // API integration settings
   apiEnabled Boolean @default(false)
@@ -99,6 +106,7 @@ model Form {
   fields    FormField[]
   responses Response[]
   emailVerifications EmailVerificationRecord[]
+  limitedPublicViewVisits LimitedPublicViewVisit[]
 
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
@@ -132,6 +140,7 @@ model Response {
   respondentHash String?     // app-level hashed identifier (HMAC)
   respondentEmail String?    // for quick lookup/indexing
   formAccountId  String?     // tracks which form account submitted this
+  submissionLocation Json?
 
   processed      Boolean     @default(false)
   attachments    Attachment[]
@@ -149,6 +158,19 @@ model Attachment {
   size       Int?
   url        String   // e.g., S3 URL or storage key
   createdAt  DateTime @default(now())
+}
+
+model LimitedPublicViewVisit {
+  id        String   @id @default(uuid())
+  formId    String
+  form      Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  viewId    String
+  viewName  String
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([formId, viewId, createdAt])
 }
 
 model Session {

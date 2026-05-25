@@ -34,6 +34,7 @@ export async function GET(
         response: true,
         createdAt: true,
         respondentIp: true,
+        submissionLocation: true,
       },
     })
 

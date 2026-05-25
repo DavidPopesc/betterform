@@ -1,6 +1,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 
+import LocalizedDateTime from '@/components/LocalizedDateTime'
 import { Card } from '@/components/ui/card'
 import { getSharedResponseViewPayload } from '@/lib/public-response-view'
 
@@ -53,7 +54,9 @@ export default async function SharedResponsesPage({
                     const responsePayload = response.response as Record<string, unknown>
                     return (
                       <tr key={response.id} className="border-b last:border-b-0">
-                        <td className="px-4 py-3 text-sm text-slate-600">{new Date(response.createdAt).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          <LocalizedDateTime value={response.createdAt} />
+                        </td>
                         {payload.visibleFields.map((field) => {
                           const value = responsePayload[field.id]
                           let displayValue = ''

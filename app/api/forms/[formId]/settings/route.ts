@@ -31,10 +31,17 @@ export async function GET(
         isQuiz: true,
         showScore: true,
         successMessage: true,
+        allowAnotherResponse: true,
         responsesEnabled: true,
         responseDeadline: true,
         oneResponsePerEmail: true,
         oneResponsePerUser: true,
+        requireLocationOnSubmit: true,
+        geoLockEnabled: true,
+        geoLockLatitude: true,
+        geoLockLongitude: true,
+        geoLockRadiusMeters: true,
+        notifyOnLimitedViewVisit: true,
       }
     })
     
@@ -53,10 +60,17 @@ export async function GET(
       isQuiz: form.isQuiz,
       showScore: form.showScore,
       successMessage: form.successMessage,
+      allowAnotherResponse: form.allowAnotherResponse,
       responsesEnabled: form.responsesEnabled,
       responseDeadline: form.responseDeadline,
       oneResponsePerEmail: form.oneResponsePerEmail,
       oneResponsePerUser: form.oneResponsePerUser,
+      requireLocationOnSubmit: form.requireLocationOnSubmit,
+      geoLockEnabled: form.geoLockEnabled,
+      geoLockLatitude: form.geoLockLatitude,
+      geoLockLongitude: form.geoLockLongitude,
+      geoLockRadiusMeters: form.geoLockRadiusMeters,
+      notifyOnLimitedViewVisit: form.notifyOnLimitedViewVisit,
     })
   } catch (err) {
     console.error('Fetch settings error:', err)
@@ -91,10 +105,17 @@ export async function POST(
         isQuiz: true, 
         showScore: true, 
         successMessage: true, 
+        allowAnotherResponse: true,
         responsesEnabled: true, 
         responseDeadline: true,
         oneResponsePerEmail: true,
         oneResponsePerUser: true,
+        requireLocationOnSubmit: true,
+        geoLockEnabled: true,
+        geoLockLatitude: true,
+        geoLockLongitude: true,
+        geoLockRadiusMeters: true,
+        notifyOnLimitedViewVisit: true,
       }
     })
     
@@ -217,6 +238,17 @@ export async function POST(
       return NextResponse.json({ successMessage })
     }
 
+    if (body.allowAnotherResponse !== undefined) {
+      const allowAnotherResponse = Boolean(body.allowAnotherResponse)
+
+      await prisma.form.update({
+        where: { id: formId },
+        data: { allowAnotherResponse },
+      })
+
+      return NextResponse.json({ allowAnotherResponse })
+    }
+
     // Handle responses enabled toggle
     if (body.responsesEnabled !== undefined) {
       const responsesEnabled = Boolean(body.responsesEnabled)
@@ -263,6 +295,66 @@ export async function POST(
       })
       
       return NextResponse.json({ oneResponsePerUser })
+    }
+
+    if (body.notifyOnLimitedViewVisit !== undefined) {
+      const notifyOnLimitedViewVisit = Boolean(body.notifyOnLimitedViewVisit)
+
+      await prisma.form.update({
+        where: { id: formId },
+        data: { notifyOnLimitedViewVisit },
+      })
+
+      return NextResponse.json({ notifyOnLimitedViewVisit })
+    }
+
+    if (body.locationSettings !== undefined) {
+      const rawSettings = typeof body.locationSettings === 'object' && body.locationSettings !== null
+        ? body.locationSettings as Record<string, unknown>
+        : {}
+
+      const requireLocationOnSubmit = Boolean(rawSettings.requireLocationOnSubmit)
+      const geoLockEnabled = Boolean(rawSettings.geoLockEnabled)
+      const geoLockLatitude = rawSettings.geoLockLatitude === '' || rawSettings.geoLockLatitude === null || rawSettings.geoLockLatitude === undefined
+        ? null
+        : Number(rawSettings.geoLockLatitude)
+      const geoLockLongitude = rawSettings.geoLockLongitude === '' || rawSettings.geoLockLongitude === null || rawSettings.geoLockLongitude === undefined
+        ? null
+        : Number(rawSettings.geoLockLongitude)
+      const geoLockRadiusMeters = rawSettings.geoLockRadiusMeters === '' || rawSettings.geoLockRadiusMeters === null || rawSettings.geoLockRadiusMeters === undefined
+        ? null
+        : Number.parseInt(String(rawSettings.geoLockRadiusMeters), 10)
+
+      const hasValidLatitude = geoLockLatitude === null || (Number.isFinite(geoLockLatitude) && geoLockLatitude >= -90 && geoLockLatitude <= 90)
+      const hasValidLongitude = geoLockLongitude === null || (Number.isFinite(geoLockLongitude) && geoLockLongitude >= -180 && geoLockLongitude <= 180)
+      const hasValidRadius = geoLockRadiusMeters === null || (Number.isFinite(geoLockRadiusMeters) && geoLockRadiusMeters > 0)
+
+      if (!hasValidLatitude || !hasValidLongitude || !hasValidRadius) {
+        return NextResponse.json({ error: 'invalid_location_settings' }, { status: 400 })
+      }
+
+      if (geoLockEnabled && (geoLockLatitude === null || geoLockLongitude === null || geoLockRadiusMeters === null)) {
+        return NextResponse.json({ error: 'missing_geo_lock_settings' }, { status: 400 })
+      }
+
+      await prisma.form.update({
+        where: { id: formId },
+        data: {
+          requireLocationOnSubmit,
+          geoLockEnabled,
+          geoLockLatitude,
+          geoLockLongitude,
+          geoLockRadiusMeters,
+        },
+      })
+
+      return NextResponse.json({
+        requireLocationOnSubmit,
+        geoLockEnabled,
+        geoLockLatitude,
+        geoLockLongitude,
+        geoLockRadiusMeters,
+      })
     }
 
     // Handle webhook URL

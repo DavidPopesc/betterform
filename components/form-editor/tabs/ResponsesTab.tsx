@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { formatLocationSummary, type SubmissionLocation } from '@/lib/location'
 import { Download, Trash2 } from 'lucide-react'
 
 type ResponseData = {
@@ -10,6 +11,7 @@ type ResponseData = {
   response: Record<string, unknown>
   createdAt: string
   respondentIp?: string
+  submissionLocation?: SubmissionLocation | null
 }
 
 type Field = {
@@ -228,6 +230,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
     }
 
     const questionFields = fields.filter((field) => field.type !== 'text' && field.type !== 'section')
+    const hasLocationData = responses.some((response) => response.submissionLocation)
 
     return (
       <div className="overflow-x-auto">
@@ -235,6 +238,9 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
           <thead>
             <tr className="border-b">
               <th className="bg-slate-50 p-3 text-left text-sm font-semibold">Timestamp</th>
+              {hasLocationData ? (
+                <th className="bg-slate-50 p-3 text-left text-sm font-semibold">Location</th>
+              ) : null}
               {questionFields.map((field) => (
                 <th key={field.id} className="bg-slate-50 p-3 text-left text-sm font-semibold">
                   {field.label}
@@ -246,6 +252,11 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
             {responses.map((response) => (
               <tr key={response.id} className="border-b hover:bg-slate-50">
                 <td className="p-3 text-sm">{new Date(response.createdAt).toLocaleString()}</td>
+                {hasLocationData ? (
+                  <td className="p-3 text-sm">
+                    {formatLocationSummary(response.submissionLocation)}
+                  </td>
+                ) : null}
                 {questionFields.map((field) => (
                   <td key={field.id} className="p-3 text-sm">
                     {formatResponseValue(field, response.response[field.id])}
@@ -285,6 +296,15 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
               </Button>
             </div>
             <div className="space-y-4">
+              {response.submissionLocation ? (
+                <div>
+                  <div className="mb-1 text-sm font-medium text-muted-foreground">Location</div>
+                  <div className="text-base">{formatLocationSummary(response.submissionLocation)}</div>
+                  <div className="text-sm text-muted-foreground">
+                    Captured {new Date(response.submissionLocation.capturedAt).toLocaleString()}
+                  </div>
+                </div>
+              ) : null}
               {fields
                 .filter((field) => field.type !== 'text' && field.type !== 'section')
                 .map((field) => (

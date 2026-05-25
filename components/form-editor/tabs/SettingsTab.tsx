@@ -1,6 +1,7 @@
 "use client"
 
 import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
+import LocalizedDateTime from '@/components/LocalizedDateTime'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -20,6 +21,20 @@ type LimitedPublicView = {
   filterValue: string
   visibleFieldIds: string[]
   createdAt: string
+  updatedAt?: string
+}
+
+type LimitedPublicViewVisitStat = {
+  viewId: string
+  totalViews: number
+  lastViewedAt: string | null
+  recentVisits: Array<{
+    id: string
+    viewId: string
+    viewName: string
+    createdAt: string
+    userAgent: string | null
+  }>
 }
 
 const THEMES = [
@@ -34,13 +49,16 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const [publicId, setPublicId] = useState<string>('')
   const [formFields, setFormFields] = useState<Array<{ id: string; label: string; type: string; options?: Array<{ id: string; label: string }> }>>([])
   const [views, setViews] = useState<LimitedPublicView[]>([])
+  const [viewStats, setViewStats] = useState<Record<string, LimitedPublicViewVisitStat>>({})
   const [viewName, setViewName] = useState('')
+  const [editingViewId, setEditingViewId] = useState<string | null>(null)
   const [copiedViewId, setCopiedViewId] = useState<string | null>(null)
   const [filterFieldId, setFilterFieldId] = useState('')
   const [filterValue, setFilterValue] = useState('')
   const [visibleFieldIds, setVisibleFieldIds] = useState<string[]>([])
   const [isQuiz, setIsQuiz] = useState(false)
   const [showScore, setShowScore] = useState(false)
+  const [allowAnotherResponse, setAllowAnotherResponse] = useState(false)
   const [apiEnabled, setApiEnabled] = useState(false)
   const [submissionApiKey, setSubmissionApiKey] = useState<string | null>(null)
   const [dataApiKey, setDataApiKey] = useState<string | null>(null)
@@ -49,11 +67,20 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const [responseDeadline, setResponseDeadline] = useState<string>('')
   const [oneResponsePerEmail, setOneResponsePerEmail] = useState(false)
   const [oneResponsePerUser, setOneResponsePerUser] = useState(false)
+  const [requireLocationOnSubmit, setRequireLocationOnSubmit] = useState(false)
+  const [geoLockEnabled, setGeoLockEnabled] = useState(false)
+  const [geoLockLatitude, setGeoLockLatitude] = useState('')
+  const [geoLockLongitude, setGeoLockLongitude] = useState('')
+  const [geoLockRadiusMeters, setGeoLockRadiusMeters] = useState('100')
+  const [notifyOnLimitedViewVisit, setNotifyOnLimitedViewVisit] = useState(false)
   const [successMessage, setSuccessMessage] = useState('Your response has been recorded.')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [locationSettingsMessage, setLocationSettingsMessage] = useState<string | null>(null)
   const successMessageTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const webhookUrlTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const locationSettingsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const didLoadLocationSettingsRef = useRef(false)
   const deadlineDate = responseDeadline ? responseDeadline.slice(0, 10) : ''
   const deadlineTime = responseDeadline ? responseDeadline.slice(11, 16) : ''
   const sharedViewUrl = (viewId: string) => `/responses/view/${viewId}`
@@ -135,6 +162,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         onThemeChange(data.theme || 'blue')
         setIsQuiz(data.isQuiz || false)
         setShowScore(data.showScore || false)
+        setAllowAnotherResponse(data.allowAnotherResponse || false)
         setApiEnabled(data.apiEnabled || false)
         setSubmissionApiKey(data.submissionApiKey || null)
         setDataApiKey(data.dataApiKey || null)
@@ -143,6 +171,12 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         setResponseDeadline(data.responseDeadline ? new Date(data.responseDeadline).toISOString().slice(0, 16) : '')
         setOneResponsePerEmail(data.oneResponsePerEmail || false)
         setOneResponsePerUser(data.oneResponsePerUser || false)
+        setRequireLocationOnSubmit(data.requireLocationOnSubmit || false)
+        setGeoLockEnabled(data.geoLockEnabled || false)
+        setGeoLockLatitude(data.geoLockLatitude !== null && data.geoLockLatitude !== undefined ? String(data.geoLockLatitude) : '')
+        setGeoLockLongitude(data.geoLockLongitude !== null && data.geoLockLongitude !== undefined ? String(data.geoLockLongitude) : '')
+        setGeoLockRadiusMeters(data.geoLockRadiusMeters !== null && data.geoLockRadiusMeters !== undefined ? String(data.geoLockRadiusMeters) : '100')
+        setNotifyOnLimitedViewVisit(data.notifyOnLimitedViewVisit || false)
         setSuccessMessage(data.successMessage || 'Your response has been recorded.')
       }
     } catch (err) {
@@ -158,6 +192,11 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
       if (!res.ok) return
       const data = await res.json()
       setViews(data.limitedPublicViews || [])
+      setViewStats(
+        Object.fromEntries(
+          ((data.limitedPublicViewStats || []) as LimitedPublicViewVisitStat[]).map((stat) => [stat.viewId, stat])
+        )
+      )
       if (data.publicId) setPublicId(data.publicId)
     } catch (err) {
       console.error('Failed to load limited views:', err)
@@ -220,6 +259,78 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     }
   }, [webhookUrl, formId, apiEnabled])
 
+  useEffect(() => {
+    if (loading) return
+
+    if (!didLoadLocationSettingsRef.current) {
+      didLoadLocationSettingsRef.current = true
+      return
+    }
+
+    if (locationSettingsTimeoutRef.current) {
+      clearTimeout(locationSettingsTimeoutRef.current)
+    }
+
+    setLocationSettingsMessage('Saving location settings...')
+
+    locationSettingsTimeoutRef.current = setTimeout(async () => {
+      setSaving(true)
+
+      try {
+        const res = await fetch(`/api/forms/${formId}/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            locationSettings: {
+              requireLocationOnSubmit,
+              geoLockEnabled,
+              geoLockLatitude,
+              geoLockLongitude,
+              geoLockRadiusMeters,
+            },
+          }),
+        })
+
+        if (!res.ok) {
+          const data = await res.json()
+          if (data.error === 'missing_geo_lock_settings') {
+            setLocationSettingsMessage('Geo-locking needs latitude, longitude, and a radius before it can be enabled.')
+          } else {
+            setLocationSettingsMessage('Could not save location settings. Check the values and try again.')
+          }
+          return
+        }
+
+        const data = await res.json()
+        setRequireLocationOnSubmit(Boolean(data.requireLocationOnSubmit))
+        setGeoLockEnabled(Boolean(data.geoLockEnabled))
+        setGeoLockLatitude(data.geoLockLatitude !== null && data.geoLockLatitude !== undefined ? String(data.geoLockLatitude) : '')
+        setGeoLockLongitude(data.geoLockLongitude !== null && data.geoLockLongitude !== undefined ? String(data.geoLockLongitude) : '')
+        setGeoLockRadiusMeters(data.geoLockRadiusMeters !== null && data.geoLockRadiusMeters !== undefined ? String(data.geoLockRadiusMeters) : '100')
+        setLocationSettingsMessage('Location settings saved.')
+      } catch (err) {
+        console.error('Failed to save location settings:', err)
+        setLocationSettingsMessage('Could not save location settings. Please try again.')
+      } finally {
+        setSaving(false)
+      }
+    }, 800)
+
+    return () => {
+      if (locationSettingsTimeoutRef.current) {
+        clearTimeout(locationSettingsTimeoutRef.current)
+      }
+    }
+  }, [
+    formId,
+    loading,
+    requireLocationOnSubmit,
+    geoLockEnabled,
+    geoLockLatitude,
+    geoLockLongitude,
+    geoLockRadiusMeters,
+  ])
+
   async function updateTheme(newTheme: string) {
     onThemeChange(newTheme)
     setSaving(true)
@@ -266,6 +377,23 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
       })
     } catch (err) {
       console.error('Failed to update show score:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function toggleAllowAnotherResponse() {
+    const newValue = !allowAnotherResponse
+    setAllowAnotherResponse(newValue)
+    setSaving(true)
+    try {
+      await fetch(`/api/forms/${formId}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allowAnotherResponse: newValue }),
+      })
+    } catch (err) {
+      console.error('Failed to update allowAnotherResponse:', err)
     } finally {
       setSaving(false)
     }
@@ -440,6 +568,14 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     // API call is handled by the useEffect with debouncing
   }
 
+  function resetSharedViewForm() {
+    setEditingViewId(null)
+    setViewName('')
+    setFilterFieldId('')
+    setFilterValue('')
+    setVisibleFieldIds([])
+  }
+
   async function createLimitedView() {
     if (!filterFieldId || !filterValue.trim() || visibleFieldIds.length === 0) return
     try {
@@ -447,7 +583,8 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'create_limited_public_view',
+          action: editingViewId ? 'update_limited_public_view' : 'create_limited_public_view',
+          viewId: editingViewId,
           name: viewName || 'Limited public view',
           filterFieldId,
           filterValue,
@@ -455,14 +592,20 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         }),
       })
       if (!res.ok) throw new Error('failed')
-      setViewName('')
-      setFilterFieldId('')
-      setFilterValue('')
-      setVisibleFieldIds([])
+      resetSharedViewForm()
       await loadSharing()
     } catch (err) {
       console.error('Failed to create limited public view:', err)
     }
+  }
+
+  function editLimitedView(view: LimitedPublicView) {
+    setEditingViewId(view.id)
+    setViewName(view.name)
+    setFilterFieldId(view.filterFieldId)
+    setFilterValue(view.filterValue)
+    setVisibleFieldIds(view.visibleFieldIds)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   async function deleteLimitedView(viewId: string) {
@@ -475,6 +618,9 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         body: JSON.stringify({ action: 'delete_limited_public_view', viewId }),
       })
       if (!res.ok) throw new Error('failed')
+      if (editingViewId === viewId) {
+        resetSharedViewForm()
+      }
       await loadSharing()
     } catch (err) {
       console.error('Failed to delete limited public view:', err)
@@ -498,6 +644,53 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     } catch (err) {
       console.error('Failed to download shared view QR code:', err)
     }
+  }
+
+  async function toggleLimitedViewEmailNotification() {
+    const nextValue = !notifyOnLimitedViewVisit
+    setNotifyOnLimitedViewVisit(nextValue)
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/forms/${formId}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifyOnLimitedViewVisit: nextValue }),
+      })
+
+      if (!res.ok) {
+        setNotifyOnLimitedViewVisit(!nextValue)
+      }
+    } catch (err) {
+      console.error('Failed to update shared view notification setting:', err)
+      setNotifyOnLimitedViewVisit(!nextValue)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function useCurrentLocationForGeoLock() {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      setLocationSettingsMessage('This browser does not support location access.')
+      return
+    }
+
+    setLocationSettingsMessage('Getting your current location...')
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGeoLockLatitude(String(position.coords.latitude))
+        setGeoLockLongitude(String(position.coords.longitude))
+        setLocationSettingsMessage('Current location loaded. Save to apply it to the form.')
+      },
+      () => {
+        setLocationSettingsMessage('Could not get your current location.')
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
+    )
   }
 
   if (loading) {
@@ -660,6 +853,75 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
                   </label>
                   <p className="text-xs text-muted-foreground -mt-2">Prevent the same user/device from submitting multiple times, even with different emails</p>
                 </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-col gap-3">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <span className="text-muted-foreground">Require location to submit</span>
+                      <input
+                        type="checkbox"
+                        checked={requireLocationOnSubmit}
+                        onChange={() => setRequireLocationOnSubmit((current) => !current)}
+                        disabled={saving}
+                        className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                          before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                          checked:before:translate-x-5 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </label>
+                    <p className="text-xs text-muted-foreground -mt-2">Store a location stamp with each submission and require respondents to allow location access.</p>
+
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <span className="text-muted-foreground">Geo-lock submissions</span>
+                      <input
+                        type="checkbox"
+                        checked={geoLockEnabled}
+                        onChange={() => setGeoLockEnabled((current) => !current)}
+                        disabled={saving}
+                        className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                          before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                          checked:before:translate-x-5 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </label>
+                    <p className="text-xs text-muted-foreground -mt-2">Only allow submissions within a set distance of a specific latitude and longitude.</p>
+
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <Input
+                        type="number"
+                        step="0.000001"
+                        value={geoLockLatitude}
+                        onChange={(e) => setGeoLockLatitude(e.target.value)}
+                        placeholder="Latitude"
+                        disabled={saving}
+                      />
+                      <Input
+                        type="number"
+                        step="0.000001"
+                        value={geoLockLongitude}
+                        onChange={(e) => setGeoLockLongitude(e.target.value)}
+                        placeholder="Longitude"
+                        disabled={saving}
+                      />
+                      <Input
+                        type="number"
+                        min="1"
+                        value={geoLockRadiusMeters}
+                        onChange={(e) => setGeoLockRadiusMeters(e.target.value)}
+                        placeholder="Radius (meters)"
+                        disabled={saving}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" onClick={useCurrentLocationForGeoLock} disabled={saving}>
+                        Use my current location
+                      </Button>
+                    </div>
+
+                    {locationSettingsMessage ? (
+                      <p className="text-xs text-muted-foreground">{locationSettingsMessage}</p>
+                    ) : null}
+                  </div>
+                </div>
               </>
             )}
           </div>
@@ -681,6 +943,22 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
             />
             <p className="text-xs text-muted-foreground mt-2">{successMessage.length} / 500 characters</p>
           </div>
+
+          <div className="mt-4 border-t pt-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <span className="text-muted-foreground">Show &quot;Submit another response&quot; after submit</span>
+              <input
+                type="checkbox"
+                checked={allowAnotherResponse}
+                onChange={toggleAllowAnotherResponse}
+                disabled={saving}
+                className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                  before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                  checked:before:translate-x-5 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </label>
+            <p className="text-xs text-muted-foreground mt-1">Lets respondents go back to a fresh form from the thank-you screen.</p>
+          </div>
         </Card>
 
         <Card className="p-6">
@@ -688,6 +966,21 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
           <p className="text-sm text-muted-foreground mb-4">
             Generate a private link with a UUID path that only shows chosen columns for matching rows.
           </p>
+
+          <div className="mb-4 flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <span className="text-muted-foreground">Email me when a shared view is opened</span>
+              <input
+                type="checkbox"
+                checked={notifyOnLimitedViewVisit}
+                onChange={toggleLimitedViewEmailNotification}
+                disabled={saving}
+                className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                  before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                  checked:before:translate-x-5 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </label>
+          </div>
 
           <div className="grid gap-3 md:grid-cols-2">
             <Input value={viewName} onChange={(e) => setViewName(e.target.value)} placeholder="View name" />
@@ -746,9 +1039,16 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
           </div>
 
           <div className="mt-4">
-            <Button onClick={createLimitedView} disabled={!filterFieldId || !filterValue.trim() || visibleFieldIds.length === 0}>
-              Create shared response view
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={createLimitedView} disabled={!filterFieldId || !filterValue.trim() || visibleFieldIds.length === 0}>
+                {editingViewId ? 'Save shared response view' : 'Create shared response view'}
+              </Button>
+              {editingViewId ? (
+                <Button type="button" variant="outline" onClick={resetSharedViewForm}>
+                  Cancel edit
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           {views.length > 0 && (
@@ -759,6 +1059,20 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
                     <div>
                       <div className="font-medium">{view.name}</div>
                       <div className="text-sm text-muted-foreground">{new Date(view.createdAt).toLocaleString()}</div>
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        Row access field: {shareableFields.find((field) => field.id === view.filterFieldId)?.label || view.filterFieldId}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Visible columns: {view.visibleFieldIds.map((fieldId) => shareableFields.find((field) => field.id === fieldId)?.label || fieldId).join(', ')}
+                      </div>
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        Viewed {viewStats[view.id]?.totalViews || 0} time{(viewStats[view.id]?.totalViews || 0) === 1 ? '' : 's'}
+                        {viewStats[view.id]?.lastViewedAt ? (
+                          <>
+                            {' '}• Last viewed <LocalizedDateTime value={viewStats[view.id].lastViewedAt as string} />
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <Button variant={copiedViewId === view.id ? "default" : "outline"} onClick={() => copySharedViewLink(view.id)}>
@@ -778,6 +1092,9 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
                         <Eye className="w-4 h-4 mr-2" />
                         Open
                       </Button>
+                      <Button variant="outline" onClick={() => editLimitedView(view)}>
+                        Edit
+                      </Button>
                       <Button variant="outline" onClick={() => deleteLimitedView(view.id)}>
                         <Trash2 className="w-4 h-4 mr-2" />
                         Delete
@@ -794,6 +1111,18 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
                       <p className="text-sm text-muted-foreground">
                         Scan to open this exact private response view.
                       </p>
+                      {viewStats[view.id]?.recentVisits?.length ? (
+                        <div className="rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                          <div className="mb-2 font-medium text-slate-800">Recent views</div>
+                          <div className="space-y-1">
+                            {viewStats[view.id].recentVisits.slice(0, 5).map((visit) => (
+                              <div key={visit.id}>
+                                <LocalizedDateTime value={visit.createdAt} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                       <Button variant="outline" onClick={() => downloadSharedViewQr(view.id, view.name)}>
                         <Download className="w-4 h-4 mr-2" />
                         Download QR Code

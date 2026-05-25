@@ -32,6 +32,7 @@ export type LimitedPublicViewConfig = {
   filterValue: string
   visibleFieldIds: string[]
   createdAt: string
+  updatedAt?: string
 }
 
 export type FormSchema = {

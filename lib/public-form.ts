@@ -17,7 +17,13 @@ export async function getPublicFormPayload(identifier: string, prefillId?: strin
       responsesEnabled: true,
       responseDeadline: true,
       successMessage: true,
+      allowAnotherResponse: true,
       oneResponsePerUser: true,
+      requireLocationOnSubmit: true,
+      geoLockEnabled: true,
+      geoLockLatitude: true,
+      geoLockLongitude: true,
+      geoLockRadiusMeters: true,
     },
   })
 
@@ -36,7 +42,13 @@ export async function getPublicFormPayload(identifier: string, prefillId?: strin
         responsesEnabled: true,
         responseDeadline: true,
         successMessage: true,
+        allowAnotherResponse: true,
         oneResponsePerUser: true,
+        requireLocationOnSubmit: true,
+        geoLockEnabled: true,
+        geoLockLatitude: true,
+        geoLockLongitude: true,
+        geoLockRadiusMeters: true,
       },
     })
 
@@ -105,5 +117,13 @@ export async function getPublicFormPayload(identifier: string, prefillId?: strin
     closedReason,
     isClosed: finalClosed,
     prefill: selectedPrefill,
+    locationSettings: {
+      requireLocationOnSubmit: form.requireLocationOnSubmit ?? false,
+      geoLockEnabled: form.geoLockEnabled ?? false,
+      geoLockLatitude: form.geoLockLatitude ?? null,
+      geoLockLongitude: form.geoLockLongitude ?? null,
+      geoLockRadiusMeters: form.geoLockRadiusMeters ?? null,
+    },
+    allowAnotherResponse: form.allowAnotherResponse ?? false,
   }
 }

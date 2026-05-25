@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { mkdir, writeFile } from 'fs/promises'
 import path from 'path'
 import type { Prisma } from '@/lib/generated/prisma'
+import { distanceBetweenMeters, parseSubmissionLocation } from '@/lib/location'
 import { 
   getOrCreateFormAccountId, 
   getClientIp, 
@@ -136,6 +137,11 @@ export async function POST(
         responseDeadline: true,
         oneResponsePerEmail: true,
         oneResponsePerUser: true,
+        requireLocationOnSubmit: true,
+        geoLockEnabled: true,
+        geoLockLatitude: true,
+        geoLockLongitude: true,
+        geoLockRadiusMeters: true,
         apiEnabled: true,
         submissionApiKey: true,
         webhookUrl: true,
@@ -175,6 +181,7 @@ export async function POST(
     }
 
     let responses: Record<string, unknown>
+    let submissionLocation: ReturnType<typeof parseSubmissionLocation> = null
     const uploadedFiles = new Map<string, File[]>()
     const contentType = req.headers.get('content-type') || ''
 
@@ -187,6 +194,9 @@ export async function POST(
       }
 
       responses = JSON.parse(rawResponses) as Record<string, unknown>
+      submissionLocation = parseSubmissionLocation(
+        typeof formData.get('location') === 'string' ? JSON.parse(String(formData.get('location'))) : null
+      )
 
       for (const [key, value] of formData.entries()) {
         if (!key.startsWith('file__') || !(value instanceof File)) continue
@@ -198,10 +208,41 @@ export async function POST(
     } else {
       const body = await req.json()
       responses = body.responses as Record<string, unknown>
+      submissionLocation = parseSubmissionLocation(body.location)
     }
 
     if (!responses || typeof responses !== 'object') {
       return NextResponse.json({ error: 'invalid_response_data' }, { status: 400 })
+    }
+
+    const locationRequired = form.requireLocationOnSubmit || form.geoLockEnabled
+    if (locationRequired && !submissionLocation) {
+      return NextResponse.json({
+        error: 'location_required',
+        message: 'Location access is required before submitting this form.',
+      }, { status: 403 })
+    }
+
+    if (
+      form.geoLockEnabled &&
+      submissionLocation &&
+      form.geoLockLatitude !== null &&
+      form.geoLockLongitude !== null &&
+      form.geoLockRadiusMeters !== null
+    ) {
+      const distanceMeters = distanceBetweenMeters(
+        submissionLocation.latitude,
+        submissionLocation.longitude,
+        form.geoLockLatitude,
+        form.geoLockLongitude
+      )
+
+      if (distanceMeters > form.geoLockRadiusMeters) {
+        return NextResponse.json({
+          error: 'geo_lock_failed',
+          message: `You must be within ${form.geoLockRadiusMeters} meters of the required location to submit this form.`,
+        }, { status: 403 })
+      }
     }
 
     // For API requests, skip form account tracking
@@ -307,6 +348,7 @@ export async function POST(
         respondentIp: ip,
         respondentEmail,
         formAccountId,
+        ...(submissionLocation ? { submissionLocation: submissionLocation as Prisma.InputJsonValue } : {}),
         processed: false,
       },
     })

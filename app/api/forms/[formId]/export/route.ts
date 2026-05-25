@@ -37,6 +37,7 @@ export async function GET(
         id: true,
         response: true,
         createdAt: true,
+        submissionLocation: true,
       },
     })
 
@@ -53,10 +54,20 @@ export async function GET(
     )
 
     // Build CSV
-    const headers = ['Timestamp', ...fields.map((f) => f.label)]
+    const headers = [
+      'Timestamp',
+      ...fields.map((f) => f.label),
+      'Location Latitude',
+      'Location Longitude',
+      'Location Accuracy Meters',
+      'Location Captured At',
+    ]
     const rows = responses.map(r => {
       const row = [new Date(r.createdAt).toISOString()]
       const responseData = (r.response || {}) as Record<string, unknown>
+      const location = (typeof r.submissionLocation === 'object' && r.submissionLocation !== null
+        ? r.submissionLocation as Record<string, unknown>
+        : null)
       
       fields.forEach((field) => {
         const value = responseData[field.id]
@@ -78,6 +89,11 @@ export async function GET(
           row.push(String(value))
         }
       })
+
+      row.push(location && typeof location.latitude === 'number' ? String(location.latitude) : '')
+      row.push(location && typeof location.longitude === 'number' ? String(location.longitude) : '')
+      row.push(location && typeof location.accuracyMeters === 'number' ? String(location.accuracyMeters) : '')
+      row.push(location && typeof location.capturedAt === 'string' ? location.capturedAt : '')
       
       return row
     })

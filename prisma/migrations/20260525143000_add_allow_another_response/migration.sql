@@ -1,0 +1,2 @@
+ALTER TABLE "Form"
+ADD COLUMN "allowAnotherResponse" BOOLEAN NOT NULL DEFAULT false;

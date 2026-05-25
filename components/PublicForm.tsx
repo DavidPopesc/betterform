@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Annoyed, Check, Frown, Laugh, Lock, Mail, Meh, Smile, Star, X } from 'lucide-react'
+import type { SubmissionLocation } from '@/lib/location'
+import { Annoyed, Check, Frown, Laugh, Lock, Mail, MapPin, Meh, Smile, Star, X } from 'lucide-react'
 
 interface Field {
   id: string
@@ -37,6 +38,14 @@ interface PublicFormProps {
   successMessage?: string
   prefillValues?: Record<string, unknown>
   hiddenFieldIds?: string[]
+  allowAnotherResponse?: boolean
+  locationSettings?: {
+    requireLocationOnSubmit: boolean
+    geoLockEnabled: boolean
+    geoLockLatitude: number | null
+    geoLockLongitude: number | null
+    geoLockRadiusMeters: number | null
+  }
 }
 
 const THEME_COLORS: Record<string, { bg: string }> = {
@@ -101,11 +110,20 @@ export default function PublicForm({
   successMessage = 'Your response has been recorded.',
   prefillValues = {},
   hiddenFieldIds = [],
+  allowAnotherResponse = false,
+  locationSettings = {
+    requireLocationOnSubmit: false,
+    geoLockEnabled: false,
+    geoLockLatitude: null,
+    geoLockLongitude: null,
+    geoLockRadiusMeters: null,
+  },
 }: PublicFormProps) {
   const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [responses, setResponses] = useState<Record<string, string | string[] | number>>({})
   const [fileResponses, setFileResponses] = useState<Record<string, File[]>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [score, setScore] = useState<{ earned: number; total: number } | null>(null)
   const [error, setError] = useState('')
@@ -119,6 +137,7 @@ export default function PublicForm({
 
   const hiddenFieldIdSet = new Set(hiddenFieldIds)
   const hasVerifiedEmailField = fields.some((field) => field.type === 'email' && field.requireVerifiedEmail)
+  const locationRequiredForSubmission = locationSettings.requireLocationOnSubmit || locationSettings.geoLockEnabled
   const storageKey = `form-responses-${publicId}`
   const prefilledSerialized = useMemo(() => JSON.stringify(prefillValues), [prefillValues])
 
@@ -345,6 +364,51 @@ export default function PublicForm({
     return { earned, total }
   }
 
+  const startAnotherResponse = () => {
+    window.location.reload()
+  }
+
+  const requestSubmissionLocation = async (): Promise<SubmissionLocation> => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      throw new Error('This device does not support location access.')
+    }
+
+    setIsRequestingLocation(true)
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        })
+      })
+
+      return {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracyMeters: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
+        capturedAt: new Date(position.timestamp).toISOString(),
+      }
+    } catch (error) {
+      if (error instanceof GeolocationPositionError) {
+        if (error.code === error.PERMISSION_DENIED) {
+          throw new Error('Please allow location access to submit this form.')
+        }
+        if (error.code === error.POSITION_UNAVAILABLE) {
+          throw new Error('Your location could not be determined. Please try again.')
+        }
+        if (error.code === error.TIMEOUT) {
+          throw new Error('Timed out while requesting your location. Please try again.')
+        }
+      }
+
+      throw new Error('Unable to get your location. Please try again.')
+    } finally {
+      setIsRequestingLocation(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (suppressSubmitRef.current) return
@@ -364,8 +428,12 @@ export default function PublicForm({
 
     setIsSubmitting(true)
     try {
+      const submissionLocation = locationRequiredForSubmission ? await requestSubmissionLocation() : null
       const formData = new FormData()
       formData.append('responses', JSON.stringify(responses))
+      if (submissionLocation) {
+        formData.append('location', JSON.stringify(submissionLocation))
+      }
       Object.entries(fileResponses).forEach(([fieldId, files]) => {
         files.forEach((file) => {
           formData.append(`file__${fieldId}`, file)
@@ -390,6 +458,10 @@ export default function PublicForm({
           setError('This form is no longer accepting responses.')
         } else if (data.error === 'deadline_passed') {
           setError('The response deadline has passed.')
+        } else if (data.error === 'location_required') {
+          setError('Location access is required before submitting this form.')
+        } else if (data.error === 'geo_lock_failed') {
+          setError(data.message || 'You are too far from the required location to submit this form.')
         } else {
           setError(data.message || 'Failed to submit form. Please try again.')
         }
@@ -405,7 +477,7 @@ export default function PublicForm({
       setSubmitted(true)
     } catch (err) {
       console.error('Submission error:', err)
-      setError('Failed to submit form. Please try again.')
+      setError(err instanceof Error ? err.message : 'Failed to submit form. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -428,6 +500,13 @@ export default function PublicForm({
                 <div className="text-muted-foreground">
                   {Math.round((score.earned / score.total) * 100)}% correct
                 </div>
+              </div>
+            ) : null}
+            {allowAnotherResponse ? (
+              <div className="mt-6 border-t pt-6">
+                <Button type="button" variant="outline" onClick={startAnotherResponse}>
+                  Submit another response
+                </Button>
               </div>
             ) : null}
           </Card>
@@ -871,6 +950,22 @@ export default function PublicForm({
               </div>
             ) : null}
 
+            {locationRequiredForSubmission ? (
+              <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                <div className="flex items-start gap-2">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-medium">Location access required</p>
+                    <p className="mt-1">
+                      {locationSettings.geoLockEnabled && locationSettings.geoLockRadiusMeters
+                        ? `You must share your location and be within ${locationSettings.geoLockRadiusMeters} meters of the required area to submit this form.`
+                        : 'You must share your location before this form can be submitted.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-6 flex items-center justify-between">
               <div>
                 {currentPage > 0 ? (
@@ -882,7 +977,7 @@ export default function PublicForm({
               <div>
                 {isLastPage ? (
                   <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? 'Submitting...' : 'Submit'}
+                    {isSubmitting ? (isRequestingLocation ? 'Checking location...' : 'Submitting...') : 'Submit'}
                   </Button>
                 ) : (
                   <Button type="button" onClick={handleNext}>

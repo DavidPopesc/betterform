@@ -158,6 +158,39 @@ export async function sendFormSubmissionAlert(params: {
   })
 }
 
+export async function sendLimitedPublicViewVisitAlert(params: {
+  to: string
+  formName: string
+  viewName: string
+  viewUrl: string
+  viewedAt: Date
+}) {
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: params.to,
+    subject: `Shared response view opened: ${params.viewName}`,
+    html: `
+      <div style="background:#f8fafc;padding:24px;font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;">
+        <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
+          <div style="padding:24px 24px 8px;">
+            <p style="margin:0;font-size:13px;line-height:20px;color:#64748b;">Better Form</p>
+            <h1 style="margin:8px 0 0;font-size:22px;line-height:30px;font-weight:700;">A shared response view was opened</h1>
+          </div>
+          <div style="padding:16px 24px 0;font-size:15px;line-height:24px;color:#334155;">
+            <p style="margin:0 0 12px;"><strong>Form:</strong> ${params.formName}</p>
+            <p style="margin:0 0 12px;"><strong>View:</strong> ${params.viewName}</p>
+            <p style="margin:0 0 18px;"><strong>Viewed at:</strong> ${params.viewedAt.toISOString()}</p>
+          </div>
+          <div style="padding:0 24px 24px;">
+            <a href="${params.viewUrl}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:8px;font-size:14px;font-weight:600;">Open shared view</a>
+            <p style="margin:14px 0 0 0;font-size:12px;line-height:18px;color:#64748b;word-break:break-all;">${params.viewUrl}</p>
+          </div>
+        </div>
+      </div>
+    `,
+  })
+}
+
 export async function verifyEmailToken(userId: string, presentedToken: string) {
   const tokenHash = sha256Hex(presentedToken);
   const { default: _prisma } = await import('./db')
@@ -172,6 +205,6 @@ export async function verifyEmailToken(userId: string, presentedToken: string) {
   return { ok: true };
 }
 
-const emailService = { sendVerificationEmail, sendLoginApprovalEmail, sendFormSubmissionAlert, verifyEmailToken };
+const emailService = { sendVerificationEmail, sendLoginApprovalEmail, sendFormSubmissionAlert, sendLimitedPublicViewVisitAlert, verifyEmailToken };
 
 export default emailService;
