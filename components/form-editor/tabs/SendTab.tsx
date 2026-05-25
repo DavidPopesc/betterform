@@ -31,6 +31,7 @@ interface SendTabProps {
 export default function SendTab({ formId, publicId, formName, fields }: SendTabProps) {
   const [copied, setCopied] = React.useState(false);
   const [embedCopied, setEmbedCopied] = React.useState(false);
+  const [copiedPrefillId, setCopiedPrefillId] = React.useState<string | null>(null);
   const [prefills, setPrefills] = React.useState<PrefillLink[]>([]);
   const [prefillName, setPrefillName] = React.useState("");
   const [prefillFieldId, setPrefillFieldId] = React.useState("");
@@ -145,6 +146,10 @@ export default function SendTab({ formId, publicId, formName, fields }: SendTabP
 
   const copyPrefillLink = async (prefillId: string) => {
     await navigator.clipboard.writeText(`${window.location.origin}/f/${prefillId}`);
+    setCopiedPrefillId(prefillId);
+    window.setTimeout(() => {
+      setCopiedPrefillId((current) => (current === prefillId ? null : current));
+    }, 2000);
   };
 
   const getPrefillQrImageUrl = (prefillId: string) =>
@@ -280,9 +285,18 @@ export default function SendTab({ formId, publicId, formName, fields }: SendTabP
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          <Button variant="outline" onClick={() => copyPrefillLink(prefill.id)}>
-                            <Copy className="w-4 h-4 mr-2" />
-                            Copy link
+                          <Button variant={copiedPrefillId === prefill.id ? "default" : "outline"} onClick={() => copyPrefillLink(prefill.id)}>
+                            {copiedPrefillId === prefill.id ? (
+                              <>
+                                <CheckCheck className="w-4 h-4 mr-2" />
+                                Copied
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-4 h-4 mr-2" />
+                                Copy link
+                              </>
+                            )}
                           </Button>
                           <Button variant="outline" onClick={() => deletePrefill(prefill.id)}>
                             <Trash2 className="w-4 h-4 mr-2" />

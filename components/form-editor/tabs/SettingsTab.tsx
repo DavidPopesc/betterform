@@ -4,7 +4,7 @@ import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Copy, Download, Eye, RefreshCw, Trash2 } from 'lucide-react'
+import { CheckCheck, Copy, Download, Eye, RefreshCw, Trash2 } from 'lucide-react'
 
 interface SettingsTabProps {
   formId: string
@@ -35,6 +35,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const [formFields, setFormFields] = useState<Array<{ id: string; label: string; type: string; options?: Array<{ id: string; label: string }> }>>([])
   const [views, setViews] = useState<LimitedPublicView[]>([])
   const [viewName, setViewName] = useState('')
+  const [copiedViewId, setCopiedViewId] = useState<string | null>(null)
   const [filterFieldId, setFilterFieldId] = useState('')
   const [filterValue, setFilterValue] = useState('')
   const [visibleFieldIds, setVisibleFieldIds] = useState<string[]>([])
@@ -61,6 +62,14 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     return `/api/qr?data=${encodeURIComponent(`${origin}${sharedViewUrl(viewId)}`)}`
   }
   const getSafeFileName = (value: string) => value.trim().replace(/[\\/:*?"<>|]+/g, '-') || 'Shared response view'
+
+  const copySharedViewLink = async (viewId: string) => {
+    await navigator.clipboard.writeText(`${window.location.origin}${sharedViewUrl(viewId)}`)
+    setCopiedViewId(viewId)
+    window.setTimeout(() => {
+      setCopiedViewId((current) => (current === viewId ? null : current))
+    }, 2000)
+  }
 
   // Generate example field values for API documentation
   const generateFieldExample = (field: { id: string; label: string; type: string }): string => {
@@ -752,9 +761,18 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
                       <div className="text-sm text-muted-foreground">{new Date(view.createdAt).toLocaleString()}</div>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => navigator.clipboard.writeText(`${window.location.origin}${sharedViewUrl(view.id)}`)}>
-                        <Copy className="w-4 h-4 mr-2" />
-                        Copy link
+                      <Button variant={copiedViewId === view.id ? "default" : "outline"} onClick={() => copySharedViewLink(view.id)}>
+                        {copiedViewId === view.id ? (
+                          <>
+                            <CheckCheck className="w-4 h-4 mr-2" />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4 mr-2" />
+                            Copy link
+                          </>
+                        )}
                       </Button>
                       <Button variant="outline" onClick={() => window.open(sharedViewUrl(view.id), '_blank')}>
                         <Eye className="w-4 h-4 mr-2" />

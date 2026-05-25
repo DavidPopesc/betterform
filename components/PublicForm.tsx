@@ -49,11 +49,44 @@ const THEME_COLORS: Record<string, { bg: string }> = {
 
 const FACE_ICONS = { Angry, Frown, Meh, Smile, Laugh }
 
-function getFaceSet(max: number): Array<keyof typeof FACE_ICONS> {
-  if (max === 2) return ['Frown', 'Smile']
-  if (max === 3) return ['Frown', 'Meh', 'Smile']
-  if (max === 4) return ['Angry', 'Frown', 'Smile', 'Laugh']
-  return ['Angry', 'Frown', 'Meh', 'Smile', 'Laugh']
+type FaceOption = {
+  icon: keyof typeof FACE_ICONS
+  label: string
+  value: number
+}
+
+function getFaceSet(max: number): FaceOption[] {
+  if (max === 2) {
+    return [
+      { icon: 'Smile', label: 'Smile', value: 2 },
+      { icon: 'Frown', label: 'Frown', value: 1 },
+    ]
+  }
+
+  if (max === 3) {
+    return [
+      { icon: 'Smile', label: 'Smile', value: 3 },
+      { icon: 'Meh', label: 'Meh', value: 2 },
+      { icon: 'Frown', label: 'Frown', value: 1 },
+    ]
+  }
+
+  if (max === 4) {
+    return [
+      { icon: 'Laugh', label: 'Laugh', value: 4 },
+      { icon: 'Smile', label: 'Smile', value: 3 },
+      { icon: 'Angry', label: 'Annoyed', value: 2 },
+      { icon: 'Frown', label: 'Frown', value: 1 },
+    ]
+  }
+
+  return [
+    { icon: 'Laugh', label: 'Laugh', value: 5 },
+    { icon: 'Smile', label: 'Smile', value: 4 },
+    { icon: 'Meh', label: 'Meh', value: 3 },
+    { icon: 'Angry', label: 'Annoyed', value: 2 },
+    { icon: 'Frown', label: 'Frown', value: 1 },
+  ]
 }
 
 export default function PublicForm({
@@ -731,21 +764,20 @@ export default function PublicForm({
         if (style === 'faces') {
           const faces = getFaceSet(max)
           return (
-            <div className="grid grid-cols-5 justify-items-center gap-1.5 sm:flex sm:flex-wrap sm:justify-center sm:gap-3">
-              {faces.map((face, index) => {
-                const FaceIcon = FACE_ICONS[face]
-                const num = index + 1
+            <div className="grid grid-cols-5 justify-items-center gap-2 sm:flex sm:flex-wrap sm:justify-center sm:gap-3">
+              {faces.map((face) => {
+                const FaceIcon = FACE_ICONS[face.icon]
                 return (
                   <button
-                    key={face}
+                    key={`${face.label}-${face.value}`}
                     type="button"
-                    onClick={() => handleInputChange(field.id, num)}
-                    className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition sm:h-14 sm:w-14 ${
-                      value === num ? 'border-primary bg-primary/10 text-primary' : 'border-slate-300 text-slate-500 hover:border-primary'
+                    onClick={() => handleInputChange(field.id, face.value)}
+                    className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition sm:h-14 sm:w-14 ${
+                      value === face.value ? 'border-primary bg-primary/10 text-primary' : 'border-slate-300 text-slate-500 hover:border-primary'
                     }`}
-                    aria-label={face}
+                    aria-label={face.label}
                   >
-                    <FaceIcon className="h-5 w-5 sm:h-7 sm:w-7" />
+                    <FaceIcon className="h-6 w-6 sm:h-7 sm:w-7" />
                   </button>
                 )
               })}

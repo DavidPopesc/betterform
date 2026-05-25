@@ -4,7 +4,7 @@ import { Resend } from 'resend'
 import { getOrCreateFormAccountId } from '@/lib/form-account'
 
 const resend = new Resend(process.env.RESEND_API_KEY || '')
-const FROM_EMAIL = process.env.EMAIL_FROM || 'no-reply@example.com'
+const FROM_EMAIL = process.env.EMAIL_FROM || 'Better Form <notifications@betterform.dev>'
 const APP_URL = process.env.APP_URL || 'http://localhost:3000'
 
 function sha256Hex(input: string) {

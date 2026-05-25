@@ -152,7 +152,7 @@ Not currently implemented - consider adding:
 Required in `.env`:
 ```env
 RESEND_API_KEY=re_...
-EMAIL_FROM=no-reply@yourdomain.com
+EMAIL_FROM=Better Form <notifications@yourdomain.com>
 APP_URL=https://yourdomain.com
 ```
 
