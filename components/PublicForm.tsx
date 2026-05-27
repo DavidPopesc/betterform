@@ -451,7 +451,7 @@ export default function PublicForm({
             files.map(async (file) => {
               const pathname = `forms/${publicId}/${fieldId}/${sanitizeBlobFilename(file.name)}`
               const blob = await upload(pathname, file, {
-                access: 'public',
+                access: 'private',
                 contentType: file.type || undefined,
                 clientPayload: JSON.stringify({ publicId, fieldId }),
                 handleUploadUrl: '/api/blob/upload',
