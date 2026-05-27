@@ -1,5 +1,6 @@
 "use client"
 
+import type { ReactNode } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -27,6 +28,12 @@ interface ResponsesTabProps {
 }
 
 type SubTab = 'summary' | 'table' | 'individual'
+
+type AttachmentValue = {
+  attachmentId?: string
+  filename?: string
+  url?: string
+}
 
 export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('summary')
@@ -103,6 +110,42 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
     return String(value)
   }
 
+  const renderResponseValue = (field: Field, value: unknown): ReactNode => {
+    if (value === undefined || value === null || value === '') return '-'
+
+    if (field.type === 'file_upload' && Array.isArray(value)) {
+      const files = value.filter((item): item is AttachmentValue => typeof item === 'object' && item !== null)
+      if (files.length === 0) return '-'
+
+      return (
+        <div className="flex flex-col gap-1">
+          {files.map((file, index) => {
+            const label = file.filename || `File ${index + 1}`
+            const href = file.url || (file.attachmentId ? `/api/attachments/${file.attachmentId}` : null)
+
+            if (!href) {
+              return <span key={`${label}-${index}`}>{label}</span>
+            }
+
+            return (
+              <a
+                key={`${href}-${index}`}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="w-fit text-blue-600 underline underline-offset-2 hover:text-blue-700"
+              >
+                {label}
+              </a>
+            )
+          })}
+        </div>
+      )
+    }
+
+    return formatResponseValue(field, value)
+  }
+
   async function deleteResponse(responseId: string) {
     const confirmed = window.confirm('Delete this response permanently?')
     if (!confirmed) return
@@ -161,7 +204,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
     const value = draftResponse[field.id]
 
     if (field.type === 'file_upload') {
-      return <div className="text-base">{formatResponseValue(field, response.response[field.id])}</div>
+      return <div className="text-base">{renderResponseValue(field, response.response[field.id])}</div>
     }
 
     if (['multiple_choice', 'dropdown'].includes(field.type)) {
@@ -401,7 +444,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
                 ) : null}
                 {questionFields.map((field) => (
                   <td key={field.id} className="p-3 text-sm">
-                    {formatResponseValue(field, response.response[field.id])}
+                    {renderResponseValue(field, response.response[field.id])}
                   </td>
                 ))}
               </tr>
@@ -473,7 +516,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
                     <div className="mb-1 text-sm font-medium text-muted-foreground">{field.label}</div>
                     {editingResponseId === response.id
                       ? renderEditableField(field, response)
-                      : <div className="text-base">{formatResponseValue(field, response.response[field.id])}</div>}
+                      : <div className="text-base">{renderResponseValue(field, response.response[field.id])}</div>}
                   </div>
                 ))}
             </div>

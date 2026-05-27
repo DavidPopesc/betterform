@@ -19,6 +19,47 @@ export default async function SharedResponsesPage({
     return option?.label || optionId
   }
 
+  const renderFileList = (value: unknown) => {
+    if (!Array.isArray(value)) return '-'
+
+    const files = value.filter((item): item is { attachmentId?: unknown; filename?: unknown; url?: unknown } =>
+      typeof item === 'object' && item !== null
+    )
+
+    if (files.length === 0) return '-'
+
+    return (
+      <div className="flex flex-col gap-1">
+        {files.map((file, index) => {
+          const label = typeof file.filename === 'string' && file.filename.trim().length > 0
+            ? file.filename
+            : `File ${index + 1}`
+          const href = typeof file.attachmentId === 'string'
+            ? `/api/attachments/${file.attachmentId}?viewId=${encodeURIComponent(viewId)}`
+            : typeof file.url === 'string'
+              ? `${file.url}${file.url.includes('?') ? '&' : '?'}viewId=${encodeURIComponent(viewId)}`
+              : null
+
+          if (!href) {
+            return <span key={`${label}-${index}`}>{label}</span>
+          }
+
+          return (
+            <a
+              key={`${href}-${index}`}
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="w-fit text-blue-600 underline underline-offset-2 hover:text-blue-700"
+            >
+              {label}
+            </a>
+          )
+        })}
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-svh bg-slate-50 px-4 py-10">
       <div className="mx-auto max-w-6xl">
@@ -66,14 +107,6 @@ export default async function SharedResponsesPage({
                               displayValue = getOptionLabel(field.id, String(value))
                             } else if (field.type === 'checkboxes' && Array.isArray(value)) {
                               displayValue = value.map((item) => getOptionLabel(field.id, String(item))).join(', ')
-                            } else if (field.type === 'file_upload' && Array.isArray(value)) {
-                              displayValue = value
-                                .map((item) =>
-                                  typeof item === 'object' && item !== null && 'filename' in item
-                                    ? String((item as { filename: unknown }).filename)
-                                    : String(item)
-                                )
-                                .join(', ')
                             } else if (Array.isArray(value)) {
                               displayValue = value.join(', ')
                             } else {
@@ -83,7 +116,7 @@ export default async function SharedResponsesPage({
 
                           return (
                             <td key={field.id} className="px-4 py-3 text-sm text-slate-800">
-                              {displayValue}
+                              {field.type === 'file_upload' ? renderFileList(value) : displayValue}
                             </td>
                           )
                         })}

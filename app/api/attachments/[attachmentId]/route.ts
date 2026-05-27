@@ -5,6 +5,7 @@ import path from 'path'
 
 import { getSessionUser } from '@/lib/auth-server'
 import { isRemoteBlobUrl } from '@/lib/blob'
+import { normalizeValueForMatch, parseFormSchema } from '@/lib/form-schema'
 
 export async function GET(
   req: Request,
@@ -12,8 +13,12 @@ export async function GET(
 ) {
   try {
     const user = await getSessionUser()
+    const requestUrl = new URL(req.url)
+    const sharedViewId = requestUrl.searchParams.get('viewId')?.trim() || null
     if (!user) {
-      return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+      if (!sharedViewId) {
+        return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+      }
     }
 
     const resolvedParams = await params
@@ -32,9 +37,11 @@ export async function GET(
         url: true,
         response: {
           select: {
+            response: true,
             form: {
               select: {
                 accountId: true,
+                schema: true,
               },
             },
           },
@@ -46,8 +53,50 @@ export async function GET(
       return NextResponse.json({ error: 'not_found' }, { status: 404 })
     }
 
-    if (attachment.response.form.accountId !== user.id) {
-      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    const isOwner = user ? attachment.response.form.accountId === user.id : false
+
+    if (!isOwner) {
+      if (!sharedViewId) {
+        return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+      }
+
+      const schema = parseFormSchema(attachment.response.form.schema)
+      const sharedView = schema.limitedPublicViews.find((view) => view.id === sharedViewId)
+      if (!sharedView) {
+        return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+      }
+
+      const responsePayload =
+        typeof attachment.response.response === 'object' && attachment.response.response !== null
+          ? attachment.response.response as Record<string, unknown>
+          : {}
+
+      const isMatchingRow =
+        normalizeValueForMatch(responsePayload[sharedView.filterFieldId]) === normalizeValueForMatch(sharedView.filterValue)
+
+      if (!isMatchingRow) {
+        return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+      }
+
+      const attachmentFieldId = schema.fields.find((field) => {
+        if (field.type !== 'file_upload' || !sharedView.visibleFieldIds.includes(field.id)) {
+          return false
+        }
+
+        const value = responsePayload[field.id]
+        if (!Array.isArray(value)) return false
+
+        return value.some((item) => (
+          typeof item === 'object'
+          && item !== null
+          && 'attachmentId' in item
+          && String((item as { attachmentId?: unknown }).attachmentId || '') === attachmentId
+        ))
+      })?.id
+
+      if (!attachmentFieldId) {
+        return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+      }
     }
 
     if (isRemoteBlobUrl(attachment.url)) {
