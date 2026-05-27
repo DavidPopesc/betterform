@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { mkdir, writeFile } from 'fs/promises'
+import { del } from '@vercel/blob'
 import path from 'path'
 import type { Prisma } from '@/lib/generated/prisma'
+import { isRemoteBlobUrl } from '@/lib/blob'
 import { distanceBetweenMeters, parseSubmissionLocation } from '@/lib/location'
 import { 
   getOrCreateFormAccountId, 
@@ -25,26 +26,11 @@ type FileUploadField = {
   options?: Array<{ id: string; label: string }>
 }
 
-function sanitizeFilename(filename: string) {
-  return filename.replace(/[^a-zA-Z0-9._-]/g, '_')
-}
-
-function matchesAllowedFileType(file: File, allowedTypes: string[]) {
-  if (allowedTypes.length === 0) return true
-
-  const fileExtension = path.extname(file.name).toLowerCase()
-  const fileMimeType = file.type.toLowerCase()
-
-  return allowedTypes.some((allowedType) => {
-    const normalized = allowedType.trim().toLowerCase()
-    if (!normalized) return false
-    if (normalized.startsWith('.')) return fileExtension === normalized
-    if (normalized.endsWith('/*')) {
-      const prefix = normalized.slice(0, -1)
-      return fileMimeType.startsWith(prefix)
-    }
-    return fileMimeType === normalized
-  })
+type UploadedAttachmentInput = {
+  filename: string
+  mimeType?: string | null
+  size?: number
+  url: string
 }
 
 // Helper to send webhook notification (validates URL, blocks local IPs, and enforces timeout)
@@ -113,6 +99,8 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ publicId?: string }> }
 ) {
+  let uploadedAttachmentsByField: Record<string, UploadedAttachmentInput[]> = {}
+
   try {
     const resolvedParams = (await params) as { publicId?: string }
     const publicId = resolvedParams?.publicId
@@ -182,7 +170,6 @@ export async function POST(
 
     let responses: Record<string, unknown>
     let submissionLocation: ReturnType<typeof parseSubmissionLocation> = null
-    const uploadedFiles = new Map<string, File[]>()
     const contentType = req.headers.get('content-type') || ''
 
     if (contentType.includes('multipart/form-data')) {
@@ -197,30 +184,46 @@ export async function POST(
       submissionLocation = parseSubmissionLocation(
         typeof formData.get('location') === 'string' ? JSON.parse(String(formData.get('location'))) : null
       )
-
-      for (const [key, value] of formData.entries()) {
-        if (!key.startsWith('file__') || !(value instanceof File)) continue
-        const fieldId = key.replace('file__', '')
-        const fieldFiles = uploadedFiles.get(fieldId) || []
-        fieldFiles.push(value)
-        uploadedFiles.set(fieldId, fieldFiles)
-      }
+      uploadedAttachmentsByField = typeof formData.get('uploadedAttachments') === 'string'
+        ? JSON.parse(String(formData.get('uploadedAttachments'))) as Record<string, UploadedAttachmentInput[]>
+        : {}
     } else {
       const body = await req.json()
       responses = body.responses as Record<string, unknown>
       submissionLocation = parseSubmissionLocation(body.location)
+      uploadedAttachmentsByField =
+        typeof body.uploadedAttachments === 'object' && body.uploadedAttachments !== null
+          ? body.uploadedAttachments as Record<string, UploadedAttachmentInput[]>
+          : {}
     }
 
     if (!responses || typeof responses !== 'object') {
       return NextResponse.json({ error: 'invalid_response_data' }, { status: 400 })
     }
 
+    const uploadedBlobUrls = Object.values(uploadedAttachmentsByField)
+      .flat()
+      .map((item) => item.url)
+      .filter(isRemoteBlobUrl)
+
+    const errorJson = async (payload: Record<string, unknown>, status: number) => {
+      if (uploadedBlobUrls.length > 0) {
+        try {
+          await del(uploadedBlobUrls)
+        } catch (cleanupError) {
+          console.error('Blob cleanup failed:', cleanupError)
+        }
+      }
+
+      return NextResponse.json(payload, { status })
+    }
+
     const locationRequired = form.requireLocationOnSubmit || form.geoLockEnabled
     if (locationRequired && !submissionLocation) {
-      return NextResponse.json({
+      return errorJson({
         error: 'location_required',
         message: 'Location access is required before submitting this form.',
-      }, { status: 403 })
+      }, 403)
     }
 
     if (
@@ -238,10 +241,10 @@ export async function POST(
       )
 
       if (distanceMeters > form.geoLockRadiusMeters) {
-        return NextResponse.json({
+        return errorJson({
           error: 'geo_lock_failed',
           message: `You must be within ${form.geoLockRadiusMeters} meters of the required location to submit this form.`,
-        }, { status: 403 })
+        }, 403)
       }
     }
 
@@ -280,10 +283,10 @@ export async function POST(
         const isVerified = verifiedEmails.some(e => e.toLowerCase().trim() === respondentEmail)
         
         if (!isVerified) {
-          return NextResponse.json({ 
+          return errorJson({ 
             error: 'email_not_verified',
             message: 'Please verify your email address before submitting.'
-          }, { status: 403 })
+          }, 403)
         }
       }
     }
@@ -292,10 +295,10 @@ export async function POST(
     if (!isApiRequest && form.oneResponsePerUser && formAccountId) {
       const hasSubmitted = await hasFormAccountSubmitted(formAccountId, form.id)
       if (hasSubmitted) {
-        return NextResponse.json({ 
+        return errorJson({ 
           error: 'already_submitted',
           message: 'You have already submitted this form.'
-        }, { status: 403 })
+        }, 403)
       }
     }
 
@@ -303,40 +306,57 @@ export async function POST(
     if (form.oneResponsePerEmail && respondentEmail) {
       const emailSubmitted = await hasEmailSubmitted(respondentEmail, form.id)
       if (emailSubmitted) {
-        return NextResponse.json({ 
+        return errorJson({ 
           error: 'email_already_submitted',
           message: 'This email address has already been used to submit this form.'
-        }, { status: 403 })
+        }, 403)
       }
     }
 
     const fileFields = (schema.fields || []).filter((field) => field.type === 'file_upload')
     for (const field of fileFields) {
-      const fieldFiles = uploadedFiles.get(field.id) || []
+      const fieldFiles = uploadedAttachmentsByField[field.id] || []
       const maxFiles = Math.min(field.maxFiles || 1, 10)
 
       if (fieldFiles.length > maxFiles) {
-        return NextResponse.json({
+        return errorJson({
           error: 'too_many_files',
           message: `You can upload up to ${maxFiles} file${maxFiles === 1 ? '' : 's'} for this field.`,
-        }, { status: 400 })
+        }, 400)
       }
 
-      const invalidFile = fieldFiles.find((file) => file.size > 10 * 1024 * 1024)
+      const invalidFile = fieldFiles.find((file) => typeof file.size === 'number' && file.size > 10 * 1024 * 1024)
       if (invalidFile) {
-        return NextResponse.json({
+        return errorJson({
           error: 'file_too_large',
-          message: `${invalidFile.name} is larger than the 10 MB file limit.`,
-        }, { status: 400 })
+          message: `${invalidFile.filename} is larger than the 10 MB file limit.`,
+        }, 400)
       }
 
       const allowedTypes = field.allowedFileTypes || []
-      const disallowedFile = fieldFiles.find((file) => !matchesAllowedFileType(file, allowedTypes))
+      const disallowedFile = fieldFiles.find((file) => {
+        if (!isRemoteBlobUrl(file.url)) return true
+        if (allowedTypes.length === 0) return false
+
+        const fileExtension = path.extname(file.filename).toLowerCase()
+        const fileMimeType = (file.mimeType || '').toLowerCase()
+
+        return !allowedTypes.some((allowedType) => {
+          const normalized = allowedType.trim().toLowerCase()
+          if (!normalized) return false
+          if (normalized.startsWith('.')) return fileExtension === normalized
+          if (normalized.endsWith('/*')) {
+            const prefix = normalized.slice(0, -1)
+            return fileMimeType.startsWith(prefix)
+          }
+          return fileMimeType === normalized
+        })
+      })
       if (disallowedFile) {
-        return NextResponse.json({
+        return errorJson({
           error: 'invalid_file_type',
-          message: `${disallowedFile.name} is not an allowed file type.`,
-        }, { status: 400 })
+          message: `${disallowedFile.filename} is not an allowed file type.`,
+        }, 400)
       }
     }
 
@@ -356,40 +376,31 @@ export async function POST(
     const storedResponses: Record<string, unknown> = { ...responses }
 
     if (fileFields.length > 0) {
-      const uploadBaseDirectory = path.join(process.cwd(), 'uploads', form.id, response.id)
-      await mkdir(uploadBaseDirectory, { recursive: true })
-
       for (const field of fileFields) {
-        const fieldFiles = uploadedFiles.get(field.id) || []
+        const fieldFiles = uploadedAttachmentsByField[field.id] || []
         if (fieldFiles.length === 0) continue
 
         const attachmentMetadata = []
 
         for (const file of fieldFiles) {
           const attachmentId = crypto.randomUUID()
-          const safeFilename = sanitizeFilename(file.name)
-          const storageKey = path.join('uploads', form.id, response.id, `${attachmentId}-${safeFilename}`)
-          const filePath = path.join(process.cwd(), storageKey)
-          const buffer = Buffer.from(await file.arrayBuffer())
-
-          await writeFile(filePath, buffer)
 
           await prisma.attachment.create({
             data: {
               id: attachmentId,
               responseId: response.id,
-              filename: file.name,
-              mimeType: file.type || null,
-              size: file.size,
-              url: storageKey,
+              filename: file.filename,
+              mimeType: file.mimeType || null,
+              size: typeof file.size === 'number' ? file.size : null,
+              url: file.url,
             },
           })
 
           attachmentMetadata.push({
             attachmentId,
-            filename: file.name,
-            mimeType: file.type || null,
-            size: file.size,
+            filename: file.filename,
+            mimeType: file.mimeType || null,
+            size: typeof file.size === 'number' ? file.size : null,
             url: `/api/attachments/${attachmentId}`,
           })
         }
@@ -481,6 +492,19 @@ export async function POST(
       responseId: response.id 
     })
   } catch (err) {
+    const uploadedBlobUrls = Object.values(uploadedAttachmentsByField)
+      .flat()
+      .map((item) => item.url)
+      .filter(isRemoteBlobUrl)
+
+    if (uploadedBlobUrls.length > 0) {
+      try {
+        await del(uploadedBlobUrls)
+      } catch (cleanupError) {
+        console.error('Blob cleanup failed:', cleanupError)
+      }
+    }
+
     console.error('Form submission error:', err)
     return NextResponse.json({ error: 'server_error' }, { status: 500 })
   }

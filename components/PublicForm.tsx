@@ -2,11 +2,13 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { upload } from '@vercel/blob/client'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { sanitizeBlobFilename } from '@/lib/blob'
 import type { SubmissionLocation } from '@/lib/location'
 import { Annoyed, Check, Frown, Laugh, Lock, Mail, MapPin, Meh, Smile, Star, X } from 'lucide-react'
 
@@ -62,6 +64,13 @@ type FaceOption = {
   icon: keyof typeof FACE_ICONS
   label: string
   value: number
+}
+
+type UploadedAttachment = {
+  filename: string
+  mimeType: string | null
+  size: number
+  url: string
 }
 
 function getFaceSet(max: number): FaceOption[] {
@@ -124,6 +133,7 @@ export default function PublicForm({
   const [fileResponses, setFileResponses] = useState<Record<string, File[]>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRequestingLocation, setIsRequestingLocation] = useState(false)
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [score, setScore] = useState<{ earned: number; total: number } | null>(null)
   const [error, setError] = useState('')
@@ -429,20 +439,47 @@ export default function PublicForm({
     setIsSubmitting(true)
     try {
       const submissionLocation = locationRequiredForSubmission ? await requestSubmissionLocation() : null
-      const formData = new FormData()
-      formData.append('responses', JSON.stringify(responses))
-      if (submissionLocation) {
-        formData.append('location', JSON.stringify(submissionLocation))
+      const uploadedAttachments: Record<string, UploadedAttachment[]> = {}
+
+      if (Object.keys(fileResponses).length > 0) {
+        setIsUploadingFiles(true)
+
+        for (const [fieldId, files] of Object.entries(fileResponses)) {
+          if (files.length === 0) continue
+
+          const uploaded = await Promise.all(
+            files.map(async (file) => {
+              const pathname = `forms/${publicId}/${fieldId}/${sanitizeBlobFilename(file.name)}`
+              const blob = await upload(pathname, file, {
+                access: 'public',
+                contentType: file.type || undefined,
+                clientPayload: JSON.stringify({ publicId, fieldId }),
+                handleUploadUrl: '/api/blob/upload',
+              })
+
+              return {
+                filename: file.name,
+                mimeType: file.type || null,
+                size: file.size,
+                url: blob.url,
+              }
+            })
+          )
+
+          uploadedAttachments[fieldId] = uploaded
+        }
       }
-      Object.entries(fileResponses).forEach(([fieldId, files]) => {
-        files.forEach((file) => {
-          formData.append(`file__${fieldId}`, file)
-        })
-      })
 
       const res = await fetch(`/api/submit/${publicId}`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          responses,
+          location: submissionLocation,
+          uploadedAttachments,
+        }),
       })
 
       const data = await res.json()
@@ -479,6 +516,7 @@ export default function PublicForm({
       console.error('Submission error:', err)
       setError(err instanceof Error ? err.message : 'Failed to submit form. Please try again.')
     } finally {
+      setIsUploadingFiles(false)
       setIsSubmitting(false)
     }
   }
@@ -977,7 +1015,7 @@ export default function PublicForm({
               <div>
                 {isLastPage ? (
                   <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? (isRequestingLocation ? 'Checking location...' : 'Submitting...') : 'Submit'}
+                    {isSubmitting ? (isRequestingLocation ? 'Checking location...' : isUploadingFiles ? 'Uploading files...' : 'Submitting...') : 'Submit'}
                   </Button>
                 ) : (
                   <Button type="button" onClick={handleNext}>

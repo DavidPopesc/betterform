@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { readFile } from 'fs/promises'
 import path from 'path'
 
+import { isRemoteBlobUrl } from '@/lib/blob'
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ attachmentId?: string }> }
@@ -22,6 +24,10 @@ export async function GET(
 
     if (!attachment) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 })
+    }
+
+    if (isRemoteBlobUrl(attachment.url)) {
+      return NextResponse.redirect(attachment.url)
     }
 
     const filePath = path.join(process.cwd(), attachment.url)

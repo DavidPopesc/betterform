@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
+import { del } from '@vercel/blob'
 import { getSessionUser } from '@/lib/auth-server'
+
+import { isRemoteBlobUrl } from '@/lib/blob'
 
 export async function DELETE(
   req: Request,
@@ -27,6 +30,22 @@ export async function DELETE(
     
     if (form.accountId !== user.id) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+
+    const attachments = await prisma.attachment.findMany({
+      where: {
+        response: {
+          formId,
+        },
+      },
+      select: {
+        url: true,
+      },
+    })
+
+    const blobUrls = attachments.map((attachment) => attachment.url).filter(isRemoteBlobUrl)
+    if (blobUrls.length > 0) {
+      await del(blobUrls)
     }
 
     // Delete form (cascade deletes also remove responses via onDelete: Cascade in schema)
