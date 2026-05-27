@@ -56,9 +56,6 @@ export async function POST(request: Request): Promise<NextResponse> {
           tokenPayload: JSON.stringify(payload),
         }
       },
-      onUploadCompleted: async () => {
-        // Better Form persists attachment metadata at form submit time.
-      },
     })
 
     return NextResponse.json(jsonResponse)
