@@ -130,6 +130,7 @@ export async function POST(
         geoLockLatitude: true,
         geoLockLongitude: true,
         geoLockRadiusMeters: true,
+        notifyOnFormSubmission: true,
         apiEnabled: true,
         submissionApiKey: true,
         webhookUrl: true,
@@ -439,7 +440,7 @@ export async function POST(
       })
     }
 
-    if (form.account?.email) {
+    if (form.notifyOnFormSubmission && form.account?.email) {
       const responsePreview = (schema.fields || [])
         .filter((field) => field.type !== 'section')
         .map((field) => {
@@ -459,9 +460,13 @@ export async function POST(
               .map((item) =>
                 typeof item === 'object' && item !== null && 'filename' in item
                   ? String((item as { filename: unknown }).filename)
-                  : String(item)
+                  : typeof item === 'object' && item !== null
+                    ? 'Uploaded file'
+                    : String(item)
               )
               .join(', ')
+          } else if (typeof rawValue === 'object') {
+            displayValue = JSON.stringify(rawValue)
           } else {
             displayValue = Array.isArray(rawValue) ? rawValue.join(', ') : String(rawValue)
           }
@@ -477,7 +482,6 @@ export async function POST(
         to: form.account.email,
         formName: form.name || 'Untitled form',
         publicId,
-        responseId: response.id,
         responses: storedResponses,
         responsePreview,
         respondentEmail,

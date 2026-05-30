@@ -1,0 +1,2 @@
+ALTER TABLE "Form"
+ADD COLUMN "notifyOnFormSubmission" BOOLEAN NOT NULL DEFAULT true;

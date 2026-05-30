@@ -73,6 +73,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const [geoLockLongitude, setGeoLockLongitude] = useState('')
   const [geoLockRadiusMeters, setGeoLockRadiusMeters] = useState('100')
   const [notifyOnLimitedViewVisit, setNotifyOnLimitedViewVisit] = useState(false)
+  const [notifyOnFormSubmission, setNotifyOnFormSubmission] = useState(true)
   const [successMessage, setSuccessMessage] = useState('Your response has been recorded.')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -177,6 +178,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         setGeoLockLongitude(data.geoLockLongitude !== null && data.geoLockLongitude !== undefined ? String(data.geoLockLongitude) : '')
         setGeoLockRadiusMeters(data.geoLockRadiusMeters !== null && data.geoLockRadiusMeters !== undefined ? String(data.geoLockRadiusMeters) : '100')
         setNotifyOnLimitedViewVisit(data.notifyOnLimitedViewVisit || false)
+        setNotifyOnFormSubmission(data.notifyOnFormSubmission !== undefined ? Boolean(data.notifyOnFormSubmission) : true)
         setSuccessMessage(data.successMessage || 'Your response has been recorded.')
       }
     } catch (err) {
@@ -394,6 +396,23 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
       })
     } catch (err) {
       console.error('Failed to update allowAnotherResponse:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function toggleFormSubmissionEmailNotification() {
+    const nextValue = !notifyOnFormSubmission
+    setNotifyOnFormSubmission(nextValue)
+    setSaving(true)
+    try {
+      await fetch(`/api/forms/${formId}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifyOnFormSubmission: nextValue }),
+      })
+    } catch (err) {
+      console.error('Failed to update form submission email notification:', err)
     } finally {
       setSaving(false)
     }
@@ -958,6 +977,22 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
               />
             </label>
             <p className="text-xs text-muted-foreground mt-1">Lets respondents go back to a fresh form from the thank-you screen.</p>
+          </div>
+
+          <div className="mt-4 border-t pt-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <span className="text-muted-foreground">Email me when this form gets a new response</span>
+              <input
+                type="checkbox"
+                checked={notifyOnFormSubmission}
+                onChange={toggleFormSubmissionEmailNotification}
+                disabled={saving}
+                className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                  before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                  checked:before:translate-x-5 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </label>
+            <p className="text-xs text-muted-foreground mt-1">On by default for new forms.</p>
           </div>
         </Card>
 

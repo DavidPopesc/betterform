@@ -105,7 +105,6 @@ export async function sendFormSubmissionAlert(params: {
   to: string
   formName: string
   publicId: string
-  responseId: string
   responses: Record<string, unknown>
   responsePreview?: Array<{ label: string; value: string }>
   respondentEmail?: string | null
@@ -142,7 +141,6 @@ export async function sendFormSubmissionAlert(params: {
           </div>
           <div style="padding:16px 24px 0;font-size:15px;line-height:24px;color:#334155;">
             <p style="margin:0 0 12px;">A respondent just submitted your form.</p>
-            <p style="margin:0 0 12px;"><strong>Response ID:</strong> ${params.responseId}</p>
             <p style="margin:0 0 18px;"><strong>Respondent email:</strong> ${params.respondentEmail || "Not provided"}</p>
           </div>
           <div style="padding:0 24px 24px;">

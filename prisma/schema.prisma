@@ -94,6 +94,7 @@ model Form {
   geoLockLongitude Float?
   geoLockRadiusMeters Int?
   notifyOnLimitedViewVisit Boolean @default(false)
+  notifyOnFormSubmission Boolean @default(true)
 
   // API integration settings
   apiEnabled Boolean @default(false)
