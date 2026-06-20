@@ -13,11 +13,12 @@ export async function POST() {
         accountId: user.id,
         name: 'Untitled form',
         schema: { fields: [] },
+        notifyOnFormSubmission: true,
       },
     })
 
     return NextResponse.json({ id: newForm.id })
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: 'server_error' }, { status: 500 })
   }
 }

@@ -1,5 +1,7 @@
 'use client'
 
+import { useSyncExternalStore } from 'react'
+
 export default function LocalizedDateTime({
   value,
   className,
@@ -9,7 +11,11 @@ export default function LocalizedDateTime({
 }) {
   const date = new Date(value)
   const iso = date.toISOString()
-  const formatted = date.toLocaleString()
+  const formatted = useSyncExternalStore(
+    () => () => {},
+    () => new Date(value).toLocaleString(),
+    () => iso
+  )
 
   return (
     <time dateTime={iso} className={className} suppressHydrationWarning>

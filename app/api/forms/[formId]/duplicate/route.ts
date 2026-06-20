@@ -28,6 +28,7 @@ export async function POST(
         responsesEnabled: true,
         responseDeadline: true,
         oneResponsePerEmail: true,
+        notifyOnFormSubmission: true,
       }
     })
     
@@ -47,6 +48,7 @@ export async function POST(
         responsesEnabled: form.responsesEnabled,
         responseDeadline: form.responseDeadline || undefined,
         oneResponsePerEmail: form.oneResponsePerEmail,
+        notifyOnFormSubmission: form.notifyOnFormSubmission,
       },
     })
 

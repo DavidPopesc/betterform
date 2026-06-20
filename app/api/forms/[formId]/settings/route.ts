@@ -42,6 +42,7 @@ export async function GET(
         geoLockLongitude: true,
         geoLockRadiusMeters: true,
         notifyOnLimitedViewVisit: true,
+        notifyOnFormSubmission: true,
       }
     })
     
@@ -71,6 +72,7 @@ export async function GET(
       geoLockLongitude: form.geoLockLongitude,
       geoLockRadiusMeters: form.geoLockRadiusMeters,
       notifyOnLimitedViewVisit: form.notifyOnLimitedViewVisit,
+      notifyOnFormSubmission: form.notifyOnFormSubmission,
     })
   } catch (err) {
     console.error('Fetch settings error:', err)
@@ -116,6 +118,7 @@ export async function POST(
         geoLockLongitude: true,
         geoLockRadiusMeters: true,
         notifyOnLimitedViewVisit: true,
+        notifyOnFormSubmission: true,
       }
     })
     
@@ -306,6 +309,17 @@ export async function POST(
       })
 
       return NextResponse.json({ notifyOnLimitedViewVisit })
+    }
+
+    if (body.notifyOnFormSubmission !== undefined) {
+      const notifyOnFormSubmission = Boolean(body.notifyOnFormSubmission)
+
+      await prisma.form.update({
+        where: { id: formId },
+        data: { notifyOnFormSubmission },
+      })
+
+      return NextResponse.json({ notifyOnFormSubmission })
     }
 
     if (body.locationSettings !== undefined) {
