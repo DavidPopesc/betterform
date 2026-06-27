@@ -478,7 +478,7 @@ export async function POST(
         })
         .filter((item): item is { label: string; value: string } => item !== null)
 
-      sendFormSubmissionAlert({
+      await sendFormSubmissionAlert({
         to: form.account.email,
         formName: form.name || 'Untitled form',
         publicId,
