@@ -1,13 +1,21 @@
 import Image from 'next/image'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { ArrowRight, Check, Shield, Workflow } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { getSessionUser } from '@/lib/auth-server'
 
-export default function Home() {
+export default async function Home() {
+  const user = await getSessionUser()
+
+  if (user) {
+    redirect('/dashboard')
+  }
+
   return (
-    <div className="min-h-svh bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.08),_transparent_40%),linear-gradient(180deg,_#f8fafc_0%,_#ffffff_48%,_#f8fafc_100%)] px-6">
+    <div className="min-h-svh bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.08),transparent_40%),linear-gradient(180deg,#f8fafc_0%,#ffffff_48%,#f8fafc_100%)] px-6">
       <main className="mx-auto flex min-h-svh max-w-6xl items-center">
         <div className="grid w-full gap-10 py-12 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
           <div>
