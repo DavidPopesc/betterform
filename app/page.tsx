@@ -19,7 +19,7 @@ export default async function Home() {
       <main className="mx-auto flex min-h-svh max-w-6xl items-center">
         <div className="grid w-full gap-10 py-12 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
           <div>
-            <Link href="/dashboard" className="mb-6 inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white/80 px-4 py-2 shadow-sm">
+            <Link href="/dashboard" className="mx-auto mb-6 inline-flex items-center gap-3">
               <Image src="/betterformlogo.png" alt="Better Form logo" width={32} height={32} />
               <span className="text-sm font-medium text-slate-700">Better Form</span>
             </Link>
