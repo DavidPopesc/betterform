@@ -263,6 +263,9 @@ model PasskeyCredential {
   userId       String
   user         Account  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // User-supplied friendly label (e.g. "MacBook Touch ID"), shown in account settings
+  name         String?
+
   // The raw credential ID produced by the authenticator (base64)
   credentialId String   @unique
 

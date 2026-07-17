@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
-import { verifyRegistrationResponse, type RegistrationResponseJSON } from "@simplewebauthn/server"
+import { type RegistrationResponseJSON } from "@simplewebauthn/server"
 import {
   createSession,
   setSessionCookie,
@@ -8,7 +8,7 @@ import {
   clearPendingSignupCookie,
   PENDING_SIGNUP_COOKIE_NAME,
 } from "@/lib/session"
-import { getRpId, getExpectedOrigin } from "@/lib/webauthn"
+import { verifyRegistrationChallenge } from "@/lib/webauthn"
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,16 +30,6 @@ export async function POST(request: NextRequest) {
 
     const { default: prisma } = await import("@/lib/db")
 
-    const challengeRow = await prisma.webAuthnChallenge.findUnique({ where: { id: challengeId } })
-    if (!challengeRow || challengeRow.type !== "registration" || challengeRow.userId !== uid) {
-      return NextResponse.json({ error: "Invalid challenge" }, { status: 400 })
-    }
-
-    if (challengeRow.expiresAt < new Date()) {
-      await prisma.webAuthnChallenge.delete({ where: { id: challengeId } }).catch(() => {})
-      return NextResponse.json({ error: "Challenge expired" }, { status: 400 })
-    }
-
     const user = await prisma.account.findUnique({ where: { id: uid } })
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
@@ -53,24 +43,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Passkey already configured" }, { status: 409 })
     }
 
-    let verification
-    try {
-      verification = await verifyRegistrationResponse({
-        response: credential,
-        expectedChallenge: challengeRow.challenge,
-        expectedOrigin: getExpectedOrigin(request),
-        expectedRPID: getRpId(request),
-      })
-    } catch (err) {
-      console.error("Passkey registration verification error:", err)
-      return NextResponse.json({ error: "Verification failed" }, { status: 400 })
+    const result = await verifyRegistrationChallenge({ request, userId: uid, challengeId, credential })
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 })
     }
 
-    if (!verification.verified || !verification.registrationInfo) {
-      return NextResponse.json({ error: "Verification failed" }, { status: 400 })
-    }
-
-    const { credential: regCredential, fmt, aaguid } = verification.registrationInfo
+    const { credential: regCredential, fmt, aaguid } = result.registrationInfo
 
     await prisma.passkeyCredential.create({
       data: {
@@ -82,8 +60,6 @@ export async function POST(request: NextRequest) {
         metadata: { fmt, aaguid },
       },
     })
-
-    await prisma.webAuthnChallenge.delete({ where: { id: challengeId } }).catch(() => {})
 
     const { token, expiresAt } = await createSession(uid)
     const res = NextResponse.json({ ok: true })

@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
+import { Settings } from "lucide-react"
 import CreateFormButton from '@/components/create-form-button'
 import SignOutButton from '@/components/sign-out-button'
+import { Button } from '@/components/ui/button'
 import { getSessionUser } from '@/lib/auth-server'
 import DashboardClient from '@/components/dashboard-client'
 
@@ -29,6 +31,11 @@ export default async function DashboardPage() {
             id="search-input"
             className="hidden sm:block rounded-md border px-3 py-2 text-sm shadow-sm"
           />
+          <Button variant="outline" size="icon" asChild aria-label="Account settings">
+            <Link href="/account">
+              <Settings className="h-4 w-4" />
+            </Link>
+          </Button>
           <SignOutButton />
           <CreateFormButton label="Create" />
         </div>
