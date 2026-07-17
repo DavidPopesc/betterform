@@ -11,12 +11,11 @@ type SessionPayload = {
 }
 
 function getSessionSecret() {
-  return (
-    process.env.SESSION_JWT_SECRET ||
-    process.env.AUTH_SECRET ||
-    process.env.APP_URL ||
-    "betterform-dev-session-secret"
-  )
+  const secret = process.env.SESSION_JWT_SECRET || process.env.AUTH_SECRET
+  if (!secret) {
+    throw new Error('SESSION_JWT_SECRET or AUTH_SECRET environment variable must be set')
+  }
+  return secret
 }
 
 function toBase64Url(value: string | Buffer) {

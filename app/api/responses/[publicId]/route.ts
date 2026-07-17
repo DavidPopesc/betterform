@@ -18,11 +18,24 @@ export async function GET(
         id: true,
         name: true,
         schema: true,
+        dataApiKey: true,
       }
     })
     
     if (!form) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 })
+    }
+
+    // Require data API key to fetch responses. Deny if no key configured.
+    const authHeader = req.headers.get('authorization')
+    const apiKeyFromHeader = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null
+
+    if (!form.dataApiKey) {
+      return NextResponse.json({ error: 'api_key_not_configured' }, { status: 403 })
+    }
+
+    if (!apiKeyFromHeader || apiKeyFromHeader !== form.dataApiKey) {
+      return NextResponse.json({ error: 'invalid_api_key' }, { status: 401 })
     }
 
     // Get all responses for this form
