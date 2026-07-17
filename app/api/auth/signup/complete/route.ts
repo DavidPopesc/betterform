@@ -1,20 +1,25 @@
 import { NextResponse } from "next/server"
-import { createSession, setSessionCookie } from "@/lib/session"
-
-type PasskeyPayload = {
-  credentialId: string
-  publicKey?: string | null
-  signCount?: number
-  transports?: string[]
-  metadata?: unknown
-}
+import { cookies } from "next/headers"
+import {
+  createSession,
+  setSessionCookie,
+  verifyPendingSignupToken,
+  clearPendingSignupCookie,
+  PENDING_SIGNUP_COOKIE_NAME,
+} from "@/lib/session"
 
 export async function POST(req: Request) {
   try {
-    const { uid, passkey }: { uid?: string; passkey?: PasskeyPayload } = await req.json()
+    const { uid }: { uid?: string } = await req.json()
 
     if (!uid) {
       return NextResponse.json({ error: "Missing uid" }, { status: 400 })
+    }
+
+    const cookieStore = await cookies()
+    const pendingToken = cookieStore.get(PENDING_SIGNUP_COOKIE_NAME)?.value
+    if (!pendingToken || !verifyPendingSignupToken(pendingToken, uid)) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 })
     }
 
     const { default: prisma } = await import("@/lib/db")
@@ -31,40 +36,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email not verified" }, { status: 403 })
     }
 
-    if (passkey?.credentialId) {
-      const existingPasskey = await prisma.passkeyCredential.findFirst({
-        where: { userId: user.id },
-        select: { id: true },
-      })
-
-      if (existingPasskey) {
-        return NextResponse.json({ error: "Passkey already configured" }, { status: 409 })
-      }
-
-      await prisma.passkeyCredential.upsert({
-        where: { credentialId: passkey.credentialId },
-        create: {
-          userId: user.id,
-          credentialId: passkey.credentialId,
-          publicKey: passkey.publicKey || "",
-          signCount: passkey.signCount ?? 0,
-          transports: Array.isArray(passkey.transports) ? passkey.transports : [],
-          metadata: passkey.metadata ?? {},
-        },
-        update: {
-          userId: user.id,
-          publicKey: passkey.publicKey || "",
-          signCount: passkey.signCount ?? 0,
-          transports: Array.isArray(passkey.transports) ? passkey.transports : [],
-          metadata: passkey.metadata ?? {},
-        },
-      })
-    }
-
     const { token, expiresAt } = await createSession(user.id)
 
     const res = NextResponse.json({ ok: true })
     setSessionCookie(res, token, expiresAt)
+    clearPendingSignupCookie(res)
 
     return res
   } catch (error) {

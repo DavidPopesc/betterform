@@ -11,6 +11,18 @@ function sha256Hex(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
+// Escapes user-controlled values before interpolating them into the HTML
+// email templates below (respondent-submitted answers, emails, form/view
+// names) to prevent HTML/markup injection in notification emails.
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export async function sendVerificationEmail(userId: string, userEmail: string) {
   const token = crypto.randomBytes(32).toString("hex");
   const tokenHash = sha256Hex(token);
@@ -39,7 +51,7 @@ export async function sendVerificationEmail(userId: string, userEmail: string) {
             <h1 style="margin:8px 0 0 0;font-size:22px;line-height:30px;font-weight:600;color:#0f172a;">Verify your email address</h1>
           </div>
           <div style="padding:16px 24px 0 24px;font-size:15px;line-height:24px;color:#334155;">
-            <p style="margin:0 0 14px 0;">You requested to create a Better Form account with <strong>${userEmail}</strong>.</p>
+            <p style="margin:0 0 14px 0;">You requested to create a Better Form account with <strong>${escapeHtml(userEmail)}</strong>.</p>
             <p style="margin:0 0 18px 0;">Open the verification page and choose <strong>Yes, this was me</strong> to finish sign up.</p>
           </div>
           <div style="padding:0 24px 24px 24px;">
@@ -83,7 +95,7 @@ export async function sendLoginApprovalEmail(userId: string, userEmail: string, 
             <h1 style="margin:8px 0 0 0;font-size:22px;line-height:30px;font-weight:600;color:#0f172a;">Approve sign in request</h1>
           </div>
           <div style="padding:16px 24px 0 24px;font-size:15px;line-height:24px;color:#334155;">
-            <p style="margin:0 0 14px 0;">You attempted to sign in with <strong>${userEmail}</strong>.</p>
+            <p style="margin:0 0 14px 0;">You attempted to sign in with <strong>${escapeHtml(userEmail)}</strong>.</p>
             <p style="margin:0 0 18px 0;">Open this page and choose <strong>Yes, this was me</strong> to continue sign in.</p>
           </div>
           <div style="padding:0 24px 24px 24px;">
@@ -120,8 +132,8 @@ export async function sendFormSubmissionAlert(params: {
     .map(({ label, value }) => {
       const displayValue = value || "—"
       return `<tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;vertical-align:top;">${label}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${displayValue}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;vertical-align:top;">${escapeHtml(label)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(displayValue)}</td>
       </tr>`
     })
     .join("")
@@ -137,11 +149,11 @@ export async function sendFormSubmissionAlert(params: {
         <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
           <div style="padding:24px 24px 8px;">
             <p style="margin:0;font-size:13px;line-height:20px;color:#64748b;">Better Form</p>
-            <h1 style="margin:8px 0 0;font-size:22px;line-height:30px;font-weight:700;">${params.formName} has a new response</h1>
+            <h1 style="margin:8px 0 0;font-size:22px;line-height:30px;font-weight:700;">${escapeHtml(params.formName)} has a new response</h1>
           </div>
           <div style="padding:16px 24px 0;font-size:15px;line-height:24px;color:#334155;">
             <p style="margin:0 0 12px;">A respondent just submitted your form.</p>
-            <p style="margin:0 0 18px;"><strong>Respondent email:</strong> ${params.respondentEmail || "Not provided"}</p>
+            <p style="margin:0 0 18px;"><strong>Respondent email:</strong> ${escapeHtml(params.respondentEmail || "Not provided")}</p>
           </div>
           <div style="padding:0 24px 24px;">
             <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
@@ -175,8 +187,8 @@ export async function sendLimitedPublicViewVisitAlert(params: {
             <h1 style="margin:8px 0 0;font-size:22px;line-height:30px;font-weight:700;">A shared response view was opened</h1>
           </div>
           <div style="padding:16px 24px 0;font-size:15px;line-height:24px;color:#334155;">
-            <p style="margin:0 0 12px;"><strong>Form:</strong> ${params.formName}</p>
-            <p style="margin:0 0 12px;"><strong>View:</strong> ${params.viewName}</p>
+            <p style="margin:0 0 12px;"><strong>Form:</strong> ${escapeHtml(params.formName)}</p>
+            <p style="margin:0 0 12px;"><strong>View:</strong> ${escapeHtml(params.viewName)}</p>
             <p style="margin:0 0 18px;"><strong>Viewed at:</strong> ${params.viewedAt.toISOString()}</p>
           </div>
           <div style="padding:0 24px 24px;">

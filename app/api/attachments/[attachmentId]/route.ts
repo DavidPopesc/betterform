@@ -7,6 +7,29 @@ import { getSessionUser } from '@/lib/auth-server'
 import { isRemoteBlobUrl } from '@/lib/blob'
 import { normalizeValueForMatch, parseFormSchema } from '@/lib/form-schema'
 
+// Types that are safe to render inline in a browser without risk of the
+// browser executing the content (e.g. HTML/SVG with embedded scripts).
+// Everything else is force-downloaded regardless of what content type is
+// reported, since both the DB-stored mimeType and (for uploads on fields
+// with no type restriction) the blob's own content type can be attacker
+// controlled.
+const SAFE_INLINE_CONTENT_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/avif',
+  'image/x-icon',
+  'application/pdf',
+  'text/plain',
+])
+
+function resolveContentDisposition(contentType: string, filename: string) {
+  const safeFilename = filename.replace(/["\r\n]/g, '_')
+  const disposition = SAFE_INLINE_CONTENT_TYPES.has(contentType.toLowerCase()) ? 'inline' : 'attachment'
+  return `${disposition}; filename="${safeFilename}"`
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ attachmentId?: string }> }
@@ -105,22 +128,34 @@ export async function GET(
         return NextResponse.json({ error: 'blob_unavailable' }, { status: 404 })
       }
 
+      // Use the blob's own recorded content type, never the client-supplied
+      // (and DB-stored) mimeType, which an uploader fully controls.
+      const contentType = blob.blob.contentType || 'application/octet-stream'
+
       return new NextResponse(blob.stream, {
         headers: {
-          'Content-Type': attachment.mimeType || blob.blob.contentType || 'application/octet-stream',
-          'Content-Disposition': `inline; filename="${attachment.filename}"`,
+          'Content-Type': contentType,
+          'Content-Disposition': resolveContentDisposition(contentType, attachment.filename),
+          'X-Content-Type-Options': 'nosniff',
           'Cache-Control': 'private, max-age=3600',
         },
       })
     }
 
-    const filePath = path.join(process.cwd(), attachment.url)
+    const baseDir = process.cwd()
+    const filePath = path.normalize(path.join(baseDir, attachment.url))
+    if (!filePath.startsWith(baseDir + path.sep)) {
+      return NextResponse.json({ error: 'invalid_attachment_path' }, { status: 400 })
+    }
+
     const fileBuffer = await readFile(filePath)
+    const contentType = attachment.mimeType || 'application/octet-stream'
 
     return new NextResponse(fileBuffer, {
       headers: {
-        'Content-Type': attachment.mimeType || 'application/octet-stream',
-        'Content-Disposition': `inline; filename="${attachment.filename}"`,
+        'Content-Type': contentType,
+        'Content-Disposition': resolveContentDisposition(contentType, attachment.filename),
+        'X-Content-Type-Options': 'nosniff',
         'Cache-Control': 'private, max-age=3600',
       },
     })

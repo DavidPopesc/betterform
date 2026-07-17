@@ -13,12 +13,15 @@ function toBase64Url(bytes: Uint8Array) {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
 }
 
-function toBytesFromString(value: string) {
-  const bytes = new TextEncoder().encode(value)
-  if (bytes.length >= 16) return bytes.slice(0, 16)
-  const padded = new Uint8Array(16)
-  padded.set(bytes)
-  return padded
+function fromBase64Url(value: string) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/")
+  const padding = "=".repeat((4 - (normalized.length % 4)) % 4)
+  const binary = atob(normalized + padding)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes
 }
 
 function SignupCheckEmailContent() {
@@ -84,13 +87,7 @@ function SignupCheckEmailContent() {
     return () => window.clearTimeout(timer)
   }, [resendCooldown])
 
-  async function finalizeSignup(passkey?: {
-    credentialId: string
-    publicKey?: string | null
-    signCount?: number
-    transports?: string[]
-    metadata?: unknown
-  }) {
+  async function finalizeSignup() {
     setSubmitting(true)
     setPasskeyError("")
 
@@ -98,16 +95,11 @@ function SignupCheckEmailContent() {
       const res = await fetch("/api/auth/signup/complete", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ uid, passkey }),
+        body: JSON.stringify({ uid }),
       })
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        setPasskeyError(
-          data?.error === "Passkey already configured"
-            ? "This account already has a passkey set up."
-            : "Could not complete sign up. Please try again."
-        )
+        setPasskeyError("Could not complete sign up. Please try again.")
         setSubmitting(false)
         return
       }
@@ -135,28 +127,39 @@ function SignupCheckEmailContent() {
     setPasskeyError("")
 
     try {
-      const challenge = crypto.getRandomValues(new Uint8Array(32))
-      const userIdBytes = toBytesFromString(uid)
+      const optionsRes = await fetch("/api/auth/passkeys/register/options", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ uid }),
+      })
+
+      if (!optionsRes.ok) {
+        const data = await optionsRes.json().catch(() => ({}))
+        setPasskeyError(
+          data?.error === "Passkey already configured"
+            ? "This account already has a passkey set up."
+            : "Could not start passkey setup. Please try again."
+        )
+        setSubmitting(false)
+        return
+      }
+
+      const { challengeId, options } = await optionsRes.json()
 
       const credential = (await navigator.credentials.create({
         publicKey: {
-          challenge,
-          rp: { name: "Better Form" },
+          ...options,
+          challenge: fromBase64Url(options.challenge),
           user: {
-            id: userIdBytes,
-            name: email,
-            displayName: email,
+            ...options.user,
+            id: fromBase64Url(options.user.id),
           },
-          pubKeyCredParams: [
-            { type: "public-key", alg: -7 },
-            { type: "public-key", alg: -257 },
-          ],
-          timeout: 60000,
-          attestation: "none",
-          authenticatorSelection: {
-            residentKey: "preferred",
-            userVerification: "preferred",
-          },
+          excludeCredentials: (options.excludeCredentials || []).map(
+            (item: { id: string; transports?: string[] }) => ({
+              ...item,
+              id: fromBase64Url(item.id),
+            })
+          ),
         },
       })) as PublicKeyCredential | null
 
@@ -167,20 +170,34 @@ function SignupCheckEmailContent() {
       }
 
       const response = credential.response as AuthenticatorAttestationResponse
-      const publicKeyBuffer = response.getPublicKey?.() || null
-
-      const passkeyPayload = {
-        credentialId: toBase64Url(new Uint8Array(credential.rawId)),
-        publicKey: publicKeyBuffer ? toBase64Url(new Uint8Array(publicKeyBuffer)) : null,
-        signCount: 0,
-        transports: response.getTransports ? response.getTransports() : [],
-        metadata: {
-          type: credential.type,
+      const credentialJSON = {
+        id: credential.id,
+        rawId: toBase64Url(new Uint8Array(credential.rawId)),
+        type: credential.type,
+        response: {
           clientDataJSON: toBase64Url(new Uint8Array(response.clientDataJSON)),
+          attestationObject: toBase64Url(new Uint8Array(response.attestationObject)),
+          transports: response.getTransports ? response.getTransports() : undefined,
         },
+        clientExtensionResults: credential.getClientExtensionResults
+          ? credential.getClientExtensionResults()
+          : {},
       }
 
-      await finalizeSignup(passkeyPayload)
+      const verifyRes = await fetch("/api/auth/passkeys/register/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ uid, challengeId, credential: credentialJSON }),
+      })
+
+      if (!verifyRes.ok) {
+        setPasskeyError("Passkey setup failed. You can try again or skip.")
+        setSubmitting(false)
+        return
+      }
+
+      router.push("/dashboard")
+      router.refresh()
     } catch {
       setPasskeyError("Passkey setup failed. You can try again or skip.")
       setSubmitting(false)

@@ -11,12 +11,11 @@ type SessionPayload = {
 }
 
 function getSessionSecret() {
-  return (
-    process.env.SESSION_JWT_SECRET ||
-    process.env.AUTH_SECRET ||
-    process.env.APP_URL ||
-    "betterform-dev-session-secret"
-  )
+  const secret = process.env.SESSION_JWT_SECRET || process.env.AUTH_SECRET
+  if (!secret) {
+    throw new Error('SESSION_JWT_SECRET or AUTH_SECRET environment variable must be set')
+  }
+  return secret
 }
 
 function toBase64Url(value: string | Buffer) {
@@ -33,7 +32,7 @@ function fromBase64Url(value: string) {
   return Buffer.from(normalized + padding, "base64")
 }
 
-function signJwt(payload: SessionPayload) {
+function signToken(payload: Record<string, unknown>) {
   const header = { alg: "HS256", typ: "JWT" }
   const encodedHeader = toBase64Url(JSON.stringify(header))
   const encodedPayload = toBase64Url(JSON.stringify(payload))
@@ -42,7 +41,7 @@ function signJwt(payload: SessionPayload) {
   return `${data}.${signature}`
 }
 
-function verifyJwt(token: string): SessionPayload | null {
+function verifyToken<T extends { exp: number }>(token: string): T | null {
   const parts = token.split(".")
   if (parts.length !== 3) return null
 
@@ -61,13 +60,22 @@ function verifyJwt(token: string): SessionPayload | null {
   }
 
   try {
-    const payload = JSON.parse(fromBase64Url(encodedPayload).toString("utf8")) as SessionPayload
-    if (!payload.sid || !payload.uid || !payload.exp) return null
-    if (payload.exp * 1000 <= Date.now()) return null
+    const payload = JSON.parse(fromBase64Url(encodedPayload).toString("utf8")) as T
+    if (!payload.exp || payload.exp * 1000 <= Date.now()) return null
     return payload
   } catch {
     return null
   }
+}
+
+function signJwt(payload: SessionPayload) {
+  return signToken(payload)
+}
+
+function verifyJwt(token: string): SessionPayload | null {
+  const payload = verifyToken<SessionPayload>(token)
+  if (!payload || !payload.sid || !payload.uid) return null
+  return payload
 }
 
 export function sha256Hex(input: string) {
@@ -128,4 +136,46 @@ export function clearSessionCookie(response: NextResponse) {
   })
 }
 
-export { SESSION_COOKIE_NAME }
+// Binds signup completion (session creation, passkey registration) to the
+// specific browser that started the signup, so knowing a user's account id
+// alone is never sufficient to finish signing them in.
+const PENDING_SIGNUP_COOKIE_NAME = "bf_pending_signup"
+const PENDING_SIGNUP_LIFETIME_SECONDS = 60 * 30
+
+type PendingSignupPayload = { uid: string; exp: number }
+
+export function createPendingSignupToken(uid: string) {
+  const expiresAt = new Date(Date.now() + PENDING_SIGNUP_LIFETIME_SECONDS * 1000)
+  const token = signToken({ uid, exp: Math.floor(expiresAt.getTime() / 1000) } satisfies PendingSignupPayload)
+  return { token, expiresAt }
+}
+
+export function verifyPendingSignupToken(token: string, uid: string) {
+  const payload = verifyToken<PendingSignupPayload>(token)
+  return Boolean(payload?.uid && payload.uid === uid)
+}
+
+export function setPendingSignupCookie(response: NextResponse, token: string, expiresAt: Date) {
+  response.cookies.set({
+    name: PENDING_SIGNUP_COOKIE_NAME,
+    value: token,
+    httpOnly: true,
+    path: "/",
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    expires: expiresAt,
+    maxAge: PENDING_SIGNUP_LIFETIME_SECONDS,
+  })
+}
+
+export function clearPendingSignupCookie(response: NextResponse) {
+  response.cookies.set({
+    name: PENDING_SIGNUP_COOKIE_NAME,
+    value: "",
+    path: "/",
+    maxAge: 0,
+    expires: new Date(0),
+  })
+}
+
+export { SESSION_COOKIE_NAME, PENDING_SIGNUP_COOKIE_NAME }
