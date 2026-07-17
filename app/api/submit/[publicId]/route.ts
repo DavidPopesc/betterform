@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import { del } from '@vercel/blob'
 import path from 'path'
 import type { Prisma } from '@/lib/generated/prisma'
-import { isRemoteBlobUrl } from '@/lib/blob'
+import { isRemoteBlobUrl, isOwnBlobUrl } from '@/lib/blob'
 import { distanceBetweenMeters, parseSubmissionLocation } from '@/lib/location'
 import { 
   getOrCreateFormAccountId, 
@@ -33,7 +33,34 @@ type UploadedAttachmentInput = {
   url: string
 }
 
-// Helper to send webhook notification (validates URL, blocks local IPs, and enforces timeout)
+function isPrivateIPv4(ip: string) {
+  const parts = ip.split('.').map(Number)
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return true // fail closed on malformed input
+  const [a, b] = parts
+  return (
+    a === 10 ||
+    a === 127 ||
+    a === 0 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254) ||
+    (a === 100 && b >= 64 && b <= 127) // carrier-grade NAT
+  )
+}
+
+function isPrivateIPv6(ip: string) {
+  const normalized = ip.toLowerCase()
+  if (normalized === '::1' || normalized === '::') return true
+  if (normalized.startsWith('fe80:') || normalized.startsWith('fc') || normalized.startsWith('fd')) return true
+  if (normalized.startsWith('::ffff:')) {
+    const mapped = normalized.split(':').pop() || ''
+    return isPrivateIPv4(mapped)
+  }
+  return false
+}
+
+// Helper to send webhook notification (validates URL, blocks local/internal
+// addresses including via DNS resolution, and enforces timeout)
 async function sendWebhookNotification(webhookUrl: string, payload: unknown, apiKey: string) {
   // Validate URL and disallow non-HTTPS or internal addresses
   try {
@@ -44,25 +71,30 @@ async function sendWebhookNotification(webhookUrl: string, payload: unknown, api
     }
 
     const hostname = parsed.hostname
-    // Block obvious local/internal hostnames and IP ranges
-    const isIpv4 = /^\d+\.\d+\.\d+\.\d+$/.test(hostname)
     if (hostname === 'localhost' || hostname.endsWith('.local')) {
       console.error('Webhook URL hostname not allowed:', hostname)
       return
     }
 
-    if (isIpv4) {
-      const parts = hostname.split('.').map((n) => Number(n))
-      if (
-        parts[0] === 10 ||
-        parts[0] === 127 ||
-        (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
-        (parts[0] === 192 && parts[1] === 168) ||
-        (parts[0] === 169 && parts[1] === 254)
-      ) {
-        console.error('Webhook URL resolves to private IP, blocked:', hostname)
-        return
-      }
+    // Resolve the hostname ourselves and check every returned address —
+    // checking only the literal hostname string lets an attacker-controlled
+    // domain name resolve (via its own DNS record) to a private/internal
+    // address and bypass a literal-IP-only check.
+    const { lookup } = await import('dns/promises')
+    let resolvedAddresses: { address: string; family: number }[]
+    try {
+      resolvedAddresses = await lookup(hostname, { all: true, verbatim: true })
+    } catch (err) {
+      console.error('Webhook URL DNS resolution failed, blocked:', hostname, err)
+      return
+    }
+
+    const hasPrivateAddress = resolvedAddresses.some((entry) =>
+      entry.family === 6 ? isPrivateIPv6(entry.address) : isPrivateIPv4(entry.address)
+    )
+    if (resolvedAddresses.length === 0 || hasPrivateAddress) {
+      console.error('Webhook URL resolves to a private/internal address, blocked:', hostname)
+      return
     }
 
     // Create signature for webhook verification
@@ -335,8 +367,9 @@ export async function POST(
       }
 
       const allowedTypes = field.allowedFileTypes || []
+      const expectedPathPrefix = `forms/${publicId}/${field.id}/`
       const disallowedFile = fieldFiles.find((file) => {
-        if (!isRemoteBlobUrl(file.url)) return true
+        if (!isOwnBlobUrl(file.url, expectedPathPrefix)) return true
         if (allowedTypes.length === 0) return false
 
         const fileExtension = path.extname(file.filename).toLowerCase()

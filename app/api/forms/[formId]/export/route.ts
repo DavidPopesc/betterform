@@ -98,12 +98,15 @@ export async function GET(
       return row
     })
 
-    // Escape CSV values
+    // Escape CSV values. Values starting with =, +, -, @, tab, or CR are
+    // prefixed with a leading apostrophe so spreadsheet apps (Excel, Sheets,
+    // LibreOffice) don't interpret them as formulas (CSV/formula injection).
     const escapeCSV = (val: string) => {
-      if (val.includes(',') || val.includes('"') || val.includes('\n')) {
-        return `"${val.replace(/"/g, '""')}"`
+      const guarded = /^[=+\-@\t\r]/.test(val) ? `'${val}` : val
+      if (guarded.includes(',') || guarded.includes('"') || guarded.includes('\n')) {
+        return `"${guarded.replace(/"/g, '""')}"`
       }
-      return val
+      return guarded
     }
 
     const csvContent = [

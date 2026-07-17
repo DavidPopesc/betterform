@@ -88,17 +88,25 @@ export function LoginForm({
       }
 
       const response = assertion.response as AuthenticatorAssertionResponse
-      const verifyRes = await fetch("/api/auth/passkeys/assert/verify", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          challengeId,
-          credentialId: toBase64Url(new Uint8Array(assertion.rawId)),
+      const credentialJSON = {
+        id: assertion.id,
+        rawId: toBase64Url(new Uint8Array(assertion.rawId)),
+        type: assertion.type,
+        response: {
           clientDataJSON: toBase64Url(new Uint8Array(response.clientDataJSON)),
           authenticatorData: toBase64Url(new Uint8Array(response.authenticatorData)),
           signature: toBase64Url(new Uint8Array(response.signature)),
-          userHandle: response.userHandle ? toBase64Url(new Uint8Array(response.userHandle)) : null,
-        }),
+          userHandle: response.userHandle ? toBase64Url(new Uint8Array(response.userHandle)) : undefined,
+        },
+        clientExtensionResults: assertion.getClientExtensionResults
+          ? assertion.getClientExtensionResults()
+          : {},
+      }
+
+      const verifyRes = await fetch("/api/auth/passkeys/assert/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ challengeId, credential: credentialJSON }),
       })
 
       if (!verifyRes.ok) {
