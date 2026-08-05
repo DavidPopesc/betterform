@@ -25,17 +25,37 @@ export function SignaturePad({ mode, value, onChange, disabled }: SignaturePadPr
   )
 
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
+  const containerRef = React.useRef<HTMLDivElement | null>(null)
   const drawingRef = React.useRef(false)
   const hasStrokeRef = React.useRef(false)
 
+  // The canvas's internal drawing-buffer resolution must match its displayed CSS size
+  // (scaled by devicePixelRatio for crisp lines) — otherwise pointer coordinates (in CSS
+  // pixels) and drawing coordinates (in buffer pixels) diverge, and strokes drift away
+  // from the touch point the further you draw from the top-left corner.
   React.useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || activeTab !== "draw") return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    ctx.lineWidth = 2
-    ctx.lineCap = "round"
-    ctx.strokeStyle = "#0f172a"
+    const container = containerRef.current
+    if (!canvas || !container || activeTab !== "draw") return
+
+    function resize() {
+      if (!canvas || !container) return
+      const dpr = window.devicePixelRatio || 1
+      const rect = container.getBoundingClientRect()
+      canvas.width = rect.width * dpr
+      canvas.height = rect.height * dpr
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+      ctx.scale(dpr, dpr)
+      ctx.lineWidth = 2
+      ctx.lineCap = "round"
+      ctx.strokeStyle = "#0f172a"
+    }
+
+    resize()
+    const observer = new ResizeObserver(resize)
+    observer.observe(container)
+    return () => observer.disconnect()
   }, [activeTab])
 
   function getPoint(canvas: HTMLCanvasElement, e: React.PointerEvent) {
@@ -120,19 +140,22 @@ export function SignaturePad({ mode, value, onChange, disabled }: SignaturePadPr
 
       {activeTab === "draw" ? (
         <div className="space-y-2">
-          <canvas
-            ref={canvasRef}
-            width={400}
-            height={150}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
+          <div
+            ref={containerRef}
             className={cn(
-              "w-full max-w-md touch-none rounded-md border bg-white",
+              "h-56 w-full max-w-md sm:h-40",
               disabled && "pointer-events-none opacity-50"
             )}
-          />
+          >
+            <canvas
+              ref={canvasRef}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={handlePointerUp}
+              className="h-full w-full touch-none rounded-md border bg-white"
+            />
+          </div>
           <Button type="button" variant="outline" size="sm" onClick={clearDrawing} disabled={disabled}>
             Clear
           </Button>
