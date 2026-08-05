@@ -34,11 +34,15 @@ export async function PATCH(
 
     const existingResponse = await prisma.response.findFirst({
       where: { id: responseId, formId },
-      select: { id: true },
+      select: { id: true, locked: true },
     })
 
     if (!existingResponse) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 })
+    }
+
+    if (existingResponse.locked) {
+      return NextResponse.json({ error: 'locked', message: 'This response has been signed and locked.' }, { status: 403 })
     }
 
     const response = await prisma.response.update({

@@ -14,16 +14,20 @@ import {
   hasEmailSubmitted,
   getVerifiedEmails 
 } from '@/lib/form-account'
-import { sendFormSubmissionAlert } from '@/lib/email'
+import { sendFormSubmissionAlert, sendSignedContractEmail } from '@/lib/email'
+import { isSignatureValueEmpty } from '@/lib/form-schema'
+import { renderContractPdf } from '@/lib/contract-pdf'
 
 type FileUploadField = {
   id: string
   type: string
   label?: string
+  required?: boolean
   requireVerifiedEmail?: boolean
   allowedFileTypes?: string[]
   maxFiles?: number
   options?: Array<{ id: string; label: string }>
+  content?: string
 }
 
 type UploadedAttachmentInput = {
@@ -203,6 +207,7 @@ export async function POST(
 
     let responses: Record<string, unknown>
     let submissionLocation: ReturnType<typeof parseSubmissionLocation> = null
+    let clientDeviceMetadata: Record<string, unknown> | null = null
     const contentType = req.headers.get('content-type') || ''
 
     if (contentType.includes('multipart/form-data')) {
@@ -220,6 +225,9 @@ export async function POST(
       uploadedAttachmentsByField = typeof formData.get('uploadedAttachments') === 'string'
         ? JSON.parse(String(formData.get('uploadedAttachments'))) as Record<string, UploadedAttachmentInput[]>
         : {}
+      clientDeviceMetadata = typeof formData.get('deviceMetadata') === 'string'
+        ? JSON.parse(String(formData.get('deviceMetadata')))
+        : null
     } else {
       const body = await req.json()
       responses = body.responses as Record<string, unknown>
@@ -228,6 +236,8 @@ export async function POST(
         typeof body.uploadedAttachments === 'object' && body.uploadedAttachments !== null
           ? body.uploadedAttachments as Record<string, UploadedAttachmentInput[]>
           : {}
+      clientDeviceMetadata =
+        typeof body.deviceMetadata === 'object' && body.deviceMetadata !== null ? body.deviceMetadata : null
     }
 
     if (!responses || typeof responses !== 'object') {
@@ -284,6 +294,7 @@ export async function POST(
     // For API requests, skip form account tracking
     let formAccountId = null
     let ip = null
+    let deviceMetrics: Record<string, unknown> | null = null
 
     if (!isApiRequest) {
       // Get or create form account ID
@@ -291,7 +302,7 @@ export async function POST(
 
       // Get client IP and device metrics
       ip = getClientIp(req.headers)
-      const deviceMetrics = getDeviceMetrics(req.headers)
+      deviceMetrics = getDeviceMetrics(req.headers)
 
       // Update form account tracking
       await updateFormAccountTracking(formAccountId, {
@@ -305,6 +316,38 @@ export async function POST(
     const schema = form.schema as { fields?: FileUploadField[] }
     const emailField = schema.fields?.find(f => f.type === 'email')
     const respondentEmail = emailField ? String(responses[emailField.id] || '').toLowerCase().trim() : null
+
+    // A form containing a `signature` field is a contract: it requires a verified signer email,
+    // a resolvable IP address, and every required signature to be filled before it can be locked.
+    const signatureFields = (schema.fields || []).filter((f) => f.type === 'signature')
+    const isContractForm = signatureFields.length > 0
+
+    if (isContractForm) {
+      const emailFieldSettings = emailField as { requireVerifiedEmail?: boolean } | undefined
+      if (!emailField || !emailFieldSettings?.requireVerifiedEmail || !respondentEmail) {
+        return errorJson({
+          error: 'contract_requires_verified_email',
+          message: 'This contract requires a verified email address to identify the signer.',
+        }, 403)
+      }
+
+      if (!isApiRequest && (!ip || ip === 'unknown')) {
+        return errorJson({
+          error: 'ip_required',
+          message: 'Unable to determine your IP address, which is required to sign this contract.',
+        }, 403)
+      }
+
+      const missingSignature = signatureFields.find(
+        (field) => field.required && isSignatureValueEmpty(responses[field.id])
+      )
+      if (missingSignature) {
+        return errorJson({
+          error: 'signature_required',
+          message: 'Please provide your signature before submitting.',
+        }, 400)
+      }
+    }
 
     // Check if email field requires verification (only for non-API requests)
     if (!isApiRequest && emailField && respondentEmail) {
@@ -394,6 +437,17 @@ export async function POST(
       }
     }
 
+    const contractFields = isContractForm
+      ? {
+          respondentUserAgent: (deviceMetrics?.userAgent as string | undefined) || null,
+          deviceMetadata: { ...(deviceMetrics || {}), ...(clientDeviceMetadata || {}) } as Prisma.InputJsonValue,
+          signedAt: new Date(),
+          locked: true,
+          lockedAt: new Date(),
+          contractSnapshot: (schema.fields || []) as unknown as Prisma.InputJsonValue,
+        }
+      : {}
+
     // Create response record
     const response = await prisma.response.create({
       data: {
@@ -404,6 +458,7 @@ export async function POST(
         formAccountId,
         ...(submissionLocation ? { submissionLocation: submissionLocation as Prisma.InputJsonValue } : {}),
         processed: false,
+        ...contractFields,
       },
     })
 
@@ -448,6 +503,46 @@ export async function POST(
           response: storedResponses as Prisma.InputJsonValue,
         },
       })
+    }
+
+    // Signed contracts are always emailed (as a PDF) to both the signer and the form owner,
+    // regardless of the form's `notifyOnFormSubmission` setting.
+    if (isContractForm && respondentEmail) {
+      try {
+        const fieldsForPdf = (schema.fields || []).filter((field) => field.type !== 'section')
+        const pdfBuffer = await renderContractPdf({
+          formName: form.name || 'Untitled form',
+          fields: fieldsForPdf,
+          responses: storedResponses,
+          signedAt: response.createdAt,
+          respondentIp: ip,
+          respondentEmail,
+          deviceMetadata: contractFields.deviceMetadata as Record<string, unknown> | undefined,
+        })
+
+        const recipients = [respondentEmail, form.account?.email].filter(
+          (email): email is string => !!email && email.toLowerCase() !== respondentEmail.toLowerCase()
+        )
+        recipients.unshift(respondentEmail)
+        const uniqueRecipients = Array.from(new Set(recipients.map((email) => email.toLowerCase()))).map(
+          (lower) => recipients.find((email) => email.toLowerCase() === lower)!
+        )
+
+        for (const to of uniqueRecipients) {
+          await sendSignedContractEmail({
+            to,
+            formName: form.name || 'Untitled form',
+            fields: fieldsForPdf,
+            responses: storedResponses,
+            pdfBuffer,
+            signedAt: response.createdAt,
+          }).catch((err) => {
+            console.error('Signed contract email failed:', err)
+          })
+        }
+      } catch (err) {
+        console.error('Signed contract PDF generation failed:', err)
+      }
     }
 
     // Track submission in form account (for non-API requests)

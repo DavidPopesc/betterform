@@ -5,7 +5,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { formatLocationSummary, type SubmissionLocation } from '@/lib/location'
-import { Download, Pencil, Save, Trash2, X } from 'lucide-react'
+import type { SignatureValue } from '@/lib/form-schema'
+import { Download, Lock, Pencil, Save, Trash2, X } from 'lucide-react'
 
 type ResponseData = {
   id: string
@@ -13,6 +14,11 @@ type ResponseData = {
   createdAt: string
   respondentIp?: string
   submissionLocation?: SubmissionLocation | null
+  respondentUserAgent?: string | null
+  deviceMetadata?: Record<string, unknown> | null
+  signedAt?: string | null
+  locked?: boolean
+  contractSnapshot?: Array<{ id: string; type: string; label?: string }> | null
 }
 
 type Field = {
@@ -21,6 +27,8 @@ type Field = {
   label: string
   options?: Array<{ id: string; label: string }>
 }
+
+const NON_QUESTION_TYPES = ['text', 'section', 'legal_text']
 
 interface ResponsesTabProps {
   formId: string
@@ -89,6 +97,13 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
   const formatResponseValue = (field: Field, value: unknown) => {
     if (value === undefined || value === null || value === '') return '-'
 
+    if (field.type === 'signature') {
+      const sig = value as SignatureValue
+      if (sig?.mode === 'type' && sig.text) return sig.text
+      if (sig?.mode === 'draw' && sig.dataUrl) return 'Signed (drawn signature)'
+      return '-'
+    }
+
     if (['multiple_choice', 'dropdown'].includes(field.type)) {
       return getOptionLabel(field.id, String(value))
     }
@@ -112,6 +127,15 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
 
   const renderResponseValue = (field: Field, value: unknown): ReactNode => {
     if (value === undefined || value === null || value === '') return '-'
+
+    if (field.type === 'signature') {
+      const sig = value as SignatureValue
+      if (sig?.mode === 'draw' && sig.dataUrl) {
+        // eslint-disable-next-line @next/next/no-img-element
+        return <img src={sig.dataUrl} alt="Signature" className="h-16 w-auto rounded-md border bg-white" />
+      }
+      return formatResponseValue(field, value)
+    }
 
     if (field.type === 'file_upload' && Array.isArray(value)) {
       const files = value.filter((item): item is AttachmentValue => typeof item === 'object' && item !== null)
@@ -313,7 +337,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
     }
 
     const stats = fields
-      .filter((field) => field.type !== 'text' && field.type !== 'section')
+      .filter((field) => !NON_QUESTION_TYPES.includes(field.type))
       .map((field) => {
         const responseValues = responses
           .map((response) => response.response[field.id])
@@ -356,7 +380,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
           </Card>
           <Card className="p-4">
             <div className="text-2xl font-bold">
-              {fields.filter((field) => field.type !== 'text' && field.type !== 'section').length}
+              {fields.filter((field) => !NON_QUESTION_TYPES.includes(field.type)).length}
             </div>
             <div className="text-sm text-muted-foreground">Questions</div>
           </Card>
@@ -414,7 +438,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
       )
     }
 
-    const questionFields = fields.filter((field) => field.type !== 'text' && field.type !== 'section')
+    const questionFields = fields.filter((field) => !NON_QUESTION_TYPES.includes(field.type))
     const hasLocationData = responses.some((response) => response.submissionLocation)
 
     return (
@@ -470,13 +494,21 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
           <Card key={response.id} className="p-6">
             <div className="mb-4 flex items-start justify-between">
               <div>
-                <h3 className="font-semibold">Response #{responses.length - index}</h3>
+                <h3 className="font-semibold flex items-center gap-2">
+                  Response #{responses.length - index}
+                  {response.locked ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                      <Lock className="h-3 w-3" />
+                      Signed &amp; locked
+                    </span>
+                  ) : null}
+                </h3>
                 <span className="text-sm text-muted-foreground">
                   {new Date(response.createdAt).toLocaleString()}
                 </span>
               </div>
               <div className="flex gap-2">
-                {editingResponseId === response.id ? (
+                {response.locked ? null : editingResponseId === response.id ? (
                   <>
                     <Button variant="outline" onClick={cancelEditing}>
                       <X className="w-4 h-4 mr-2" />
@@ -500,6 +532,17 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
               </div>
             </div>
             <div className="space-y-4">
+              {response.locked ? (
+                <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+                  <p className="font-medium">Contract signed</p>
+                  <p>Signed at {response.signedAt ? new Date(response.signedAt).toLocaleString() : '—'}</p>
+                  <p>IP address: {response.respondentIp || 'unknown'}</p>
+                  {response.respondentUserAgent ? <p>User agent: {response.respondentUserAgent}</p> : null}
+                  {response.deviceMetadata ? (
+                    <p className="break-all">Device info: {JSON.stringify(response.deviceMetadata)}</p>
+                  ) : null}
+                </div>
+              ) : null}
               {response.submissionLocation ? (
                 <div>
                   <div className="mb-1 text-sm font-medium text-muted-foreground">Location</div>
@@ -510,7 +553,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
                 </div>
               ) : null}
               {fields
-                .filter((field) => field.type !== 'text' && field.type !== 'section')
+                .filter((field) => !NON_QUESTION_TYPES.includes(field.type))
                 .map((field) => (
                   <div key={field.id}>
                     <div className="mb-1 text-sm font-medium text-muted-foreground">{field.label}</div>

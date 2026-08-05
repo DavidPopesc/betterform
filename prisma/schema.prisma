@@ -143,6 +143,14 @@ model Response {
   formAccountId  String?     // tracks which form account submitted this
   submissionLocation Json?
 
+  // Contract signing audit trail (populated when the form contains a `signature` field)
+  respondentUserAgent String?
+  deviceMetadata Json?       // merged server + client device metrics (timezone, screen, platform, etc.)
+  signedAt       DateTime?
+  locked         Boolean     @default(false) // true once a contract response is signed; blocks further edits
+  lockedAt       DateTime?
+  contractSnapshot Json?     // frozen copy of the form's fields exactly as shown at signing time
+
   processed      Boolean     @default(false)
   attachments    Attachment[]
 

@@ -32,6 +32,38 @@ export type Field = {
   correctAnswer?: string | string[]
   scaleStyle?: 'numbers' | 'stars' | 'faces'
   scaleMax?: number
+  // `legal_text` fields
+  content?: string
+  // `signature` fields
+  signatureMode?: 'draw' | 'type' | 'either'
+  // set on the contract's required verified-email field; blocks deletion/toggling while a signature field exists
+  contractLocked?: boolean
+}
+
+// Ensures a form containing a `signature` field always has a required, verified email field —
+// reuses an existing `email` field if present, otherwise inserts one at the top of the list.
+function ensureContractEmailField(fieldsList: Field[]): Field[] {
+  const existingEmailIdx = fieldsList.findIndex((f) => f.type === 'email')
+  if (existingEmailIdx !== -1) {
+    const next = [...fieldsList]
+    next[existingEmailIdx] = {
+      ...next[existingEmailIdx],
+      required: true,
+      requireVerifiedEmail: true,
+      contractLocked: true,
+    }
+    return next
+  }
+  const emailField: Field = {
+    id: `field_${Math.random().toString(36).slice(2, 9)}`,
+    type: 'email',
+    label: getDefaultLabel('email'),
+    description: '',
+    required: true,
+    requireVerifiedEmail: true,
+    contractLocked: true,
+  }
+  return [emailField, ...fieldsList]
 }
 
 function normalizeScaleField(field: Field): Field {
@@ -58,6 +90,8 @@ export const FIELD_TYPES = [
   { value: 'date', label: 'Date' },
   { value: 'time', label: 'Time' },
   { value: 'scale', label: 'Scale' },
+  { value: 'legal_text', label: 'Contract text' },
+  { value: 'signature', label: 'Signature' },
   { value: 'text', label: 'Text' },
   { value: 'section', label: 'Section' },
 ] as const
@@ -70,6 +104,8 @@ export function getDefaultLabel(type: string): string {
   if (type === 'phone') return 'Phone number'
   if (type === 'file_upload') return 'Upload files'
   if (type === 'scale') return 'Scale question'
+  if (type === 'legal_text') return 'Contract terms'
+  if (type === 'signature') return 'Signature'
   return fieldType ? `${fieldType.label} question` : ''
 }
 
@@ -180,16 +216,26 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
       f.scaleStyle = 'numbers'
       f.scaleMax = 5
     }
+    if (type === 'legal_text') {
+      f.content = ''
+    }
+    if (type === 'signature') {
+      f.signatureMode = 'either'
+    }
     // Set default points when quiz mode is enabled
-    if (isQuiz && !['text', 'section', 'email', 'phone'].includes(type)) {
+    if (isQuiz && !['text', 'section', 'email', 'phone', 'legal_text', 'signature'].includes(type)) {
       f.points = 1
     }
     setFields((s) => {
       // insert after selected field; if nothing selected, append at end
       const found = s.findIndex((x) => x.id === selected)
       const insertAt = found === -1 ? s.length : found + 1
-      const next = [...s]
+      let next = [...s]
       next.splice(insertAt, 0, { ...f })
+      // A signature field requires a locked, verified email field to identify the signer
+      if (type === 'signature') {
+        next = ensureContractEmailField(next)
+      }
       // recompute orders
       const withOrder = next.map((it, i) => ({ ...it, order: i }))
       return withOrder
@@ -259,7 +305,16 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
   function deleteField(id: string) {
     const toDelete = fields.find((f) => f.id === id)
     if (!toDelete) return
-    setFields((s) => s.filter((f) => f.id !== id))
+    // The contract's required verified-email field can't be removed while a signature field exists
+    if (toDelete.contractLocked) return
+    setFields((s) => {
+      const next = s.filter((f) => f.id !== id)
+      if (toDelete.type === 'signature' && !next.some((f) => f.type === 'signature')) {
+        // no signature fields remain — release the lock on the email field
+        return next.map((f) => (f.contractLocked ? { ...f, contractLocked: false } : f))
+      }
+      return next
+    })
     if (selected === id) {
       setSelected(fields.length > 1 ? fields[0].id : null)
     }
@@ -267,8 +322,54 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
   }
 
   function updateField(id: string, patch: Partial<Field>) {
-    setFields((s) => s.map((f) => (f.id === id ? { ...f, ...patch } : f)))
+    setFields((s) => s.map((f) => {
+      if (f.id !== id) return f
+      if (f.contractLocked) {
+        // can't change type, un-require, or turn off verification on the contract's email field
+        const { required: _required, requireVerifiedEmail: _requireVerifiedEmail, type: _type, ...safePatch } = patch
+        return { ...f, ...safePatch }
+      }
+      return { ...f, ...patch }
+    }))
     setIsDirty(true)
+  }
+
+  function handleFieldTypeChange(f: Field, newType: string) {
+    const oldDefaultLabel = getDefaultLabel(f.type)
+    const newDefaultLabel = getDefaultLabel(newType)
+    const update: Partial<Field> = { type: newType }
+
+    // If label is still the default (or empty), update it to new default
+    if (f.label === oldDefaultLabel || f.label === '' || !f.label) {
+      update.label = newDefaultLabel
+    }
+
+    // Initialize options for choice-based fields
+    if (['multiple_choice', 'checkboxes', 'dropdown'].includes(newType) && !f.options) {
+      update.options = [{ id: `opt_${Math.random().toString(36).slice(2, 9)}`, label: 'Option 1' }]
+    }
+    if (newType === 'scale') {
+      update.scaleStyle = 'numbers'
+      update.scaleMax = 5
+    }
+    if (newType === 'legal_text') {
+      update.content = f.content ?? ''
+    }
+    if (newType === 'signature') {
+      update.signatureMode = f.signatureMode ?? 'either'
+    }
+
+    if (newType === 'signature' && f.type !== 'signature') {
+      setFields((s) => {
+        const withUpdate = s.map((x) => (x.id === f.id ? { ...x, ...update } : x))
+        const withEmail = ensureContractEmailField(withUpdate)
+        return withEmail.map((it, i) => ({ ...it, order: i }))
+      })
+      setIsDirty(true)
+      return
+    }
+
+    updateField(f.id, update)
   }
 
   function moveField(from: number, to: number) {
@@ -476,28 +577,9 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                         <div className="md:hidden">
                           <select
                             value={f.type}
-                            onChange={(e) => {
-                              const newType = e.target.value
-                              const oldDefaultLabel = getDefaultLabel(f.type)
-                              const newDefaultLabel = getDefaultLabel(newType)
-                              const update: Partial<Field> = { type: newType }
-                              
-                              // If label is still the default (or empty), update it to new default
-                              if (f.label === oldDefaultLabel || f.label === '' || !f.label) {
-                                update.label = newDefaultLabel
-                              }
-                              
-                              // Initialize options for choice-based fields
-                              if (['multiple_choice', 'checkboxes', 'dropdown'].includes(newType) && !f.options) {
-                                update.options = [{ id: `opt_${Math.random().toString(36).slice(2, 9)}`, label: 'Option 1' }]
-                              }
-                              if (newType === 'scale') {
-                                update.scaleStyle = 'numbers'
-                                update.scaleMax = 5
-                              }
-                              updateField(f.id, update)
-                            }}
-                            className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm bg-white hover:bg-slate-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
+                            disabled={f.contractLocked}
+                            onChange={(e) => handleFieldTypeChange(f, e.target.value)}
+                            className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm bg-white hover:bg-slate-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {FIELD_TYPES.map((ft) => (
@@ -506,6 +588,11 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                               </option>
                             ))}
                           </select>
+                          {f.contractLocked && (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Required for contract signing — can&apos;t be changed or removed while a signature field is on this form.
+                            </p>
+                          )}
                         </div>
                       )}
 
@@ -934,6 +1021,37 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                             </div>
                           </div>
                         )}
+
+                        {f.type === 'legal_text' && (
+                          <div className="mt-4 space-y-2">
+                            <textarea
+                              value={f.content || ''}
+                              onChange={(e) => updateField(f.id, { content: e.target.value })}
+                              placeholder="Paste or write the contract terms respondents will read before signing…"
+                              className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm min-h-40 focus:outline-none focus:ring-2 focus:ring-primary"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                        )}
+
+                        {f.type === 'signature' && (
+                          <div className="mt-4 space-y-2">
+                            <label className="mb-1 block text-xs text-muted-foreground">Signature method</label>
+                            <select
+                              value={f.signatureMode || 'either'}
+                              onChange={(e) => updateField(f.id, { signatureMode: e.target.value as Field['signatureMode'] })}
+                              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="either">Draw or type</option>
+                              <option value="draw">Draw only</option>
+                              <option value="type">Type only</option>
+                            </select>
+                            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
+                              Signing captures an audit trail (IP address, device info, timestamp) and locks this response from further edits.
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Field type selector - desktop (right side) */}
@@ -941,28 +1059,9 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                         <div className="hidden md:block shrink-0">
                           <select
                             value={f.type}
-                            onChange={(e) => {
-                              const newType = e.target.value
-                              const oldDefaultLabel = getDefaultLabel(f.type)
-                              const newDefaultLabel = getDefaultLabel(newType)
-                              const update: Partial<Field> = { type: newType }
-                              
-                              // If label is still the default (or empty), update it to new default
-                              if (f.label === oldDefaultLabel || f.label === '' || !f.label) {
-                                update.label = newDefaultLabel
-                              }
-                              
-                              // Initialize options for choice-based fields
-                              if (['multiple_choice', 'checkboxes', 'dropdown'].includes(newType) && !f.options) {
-                                update.options = [{ id: `opt_${Math.random().toString(36).slice(2, 9)}`, label: 'Option 1' }]
-                              }
-                              if (newType === 'scale') {
-                                update.scaleStyle = 'numbers'
-                                update.scaleMax = 5
-                              }
-                              updateField(f.id, update)
-                            }}
-                            className="border border-slate-200 rounded-md px-3 py-1.5 text-sm bg-white hover:bg-slate-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
+                            disabled={f.contractLocked}
+                            onChange={(e) => handleFieldTypeChange(f, e.target.value)}
+                            className="border border-slate-200 rounded-md px-3 py-1.5 text-sm bg-white hover:bg-slate-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {FIELD_TYPES.map((ft) => (
@@ -971,6 +1070,11 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                               </option>
                             ))}
                           </select>
+                          {f.contractLocked && (
+                            <p className="mt-1 max-w-40 text-xs text-muted-foreground">
+                              Required for contract signing.
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1044,18 +1148,19 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                           </Button>
                         </div>
                         <div className="flex items-center gap-3">
-                          {!['text', 'section'].includes(f.type) && (
+                          {!['text', 'section', 'legal_text'].includes(f.type) && (
                             <>
                               <label className="flex items-center gap-2 text-sm cursor-pointer">
                                 <span className="text-muted-foreground">Required</span>
                                 <input
                                   type="checkbox"
                                   checked={f.required || false}
+                                  disabled={f.contractLocked}
                                   onChange={(e) => {
                                     e.stopPropagation()
                                     updateField(f.id, { required: e.target.checked })
                                   }}
-                                  className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                                  className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary disabled:cursor-not-allowed disabled:opacity-60
                                     before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
                                     checked:before:translate-x-5"
                                 />
@@ -1066,17 +1171,18 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                                   <input
                                     type="checkbox"
                                     checked={(f as { requireVerifiedEmail?: boolean }).requireVerifiedEmail || false}
+                                    disabled={f.contractLocked}
                                     onChange={(e) => {
                                       e.stopPropagation()
                                       updateField(f.id, { requireVerifiedEmail: e.target.checked })
                                     }}
-                                    className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                                    className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary disabled:cursor-not-allowed disabled:opacity-60
                                       before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
                                       checked:before:translate-x-5"
                                   />
                                 </label>
                               )}
-                              {isQuiz && !['text', 'section', 'email', 'phone'].includes(f.type) && (
+                              {isQuiz && !['text', 'section', 'email', 'phone', 'legal_text', 'signature'].includes(f.type) && (
                                 <label className="flex items-center gap-2 text-sm">
                                   <span className="text-muted-foreground">Points</span>
                                   <input
@@ -1111,11 +1217,12 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                             size="icon-sm"
                             variant="ghost"
                             className="p-0"
+                            disabled={f.contractLocked}
                             onClick={(e) => {
                               e.stopPropagation()
                               deleteField(f.id)
                             }}
-                            title="Delete"
+                            title={f.contractLocked ? "Required for contract signing — can't be removed" : "Delete"}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>

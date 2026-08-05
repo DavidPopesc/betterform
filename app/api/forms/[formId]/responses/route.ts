@@ -35,6 +35,11 @@ export async function GET(
         createdAt: true,
         respondentIp: true,
         submissionLocation: true,
+        respondentUserAgent: true,
+        deviceMetadata: true,
+        signedAt: true,
+        locked: true,
+        contractSnapshot: true,
       },
     })
 
