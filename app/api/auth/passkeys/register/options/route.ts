@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
-import { generateRegistrationOptions } from "@simplewebauthn/server"
 import { verifyPendingSignupToken, PENDING_SIGNUP_COOKIE_NAME } from "@/lib/session"
-import { getRpId, RP_NAME } from "@/lib/webauthn"
+import { createRegistrationChallenge } from "@/lib/webauthn"
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,25 +30,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Passkey already configured" }, { status: 409 })
     }
 
-    const options = await generateRegistrationOptions({
-      rpName: RP_NAME,
-      rpID: getRpId(request),
-      userName: user.email,
-      userDisplayName: user.email,
-      attestationType: "none",
-      authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
+    const { challengeId, options } = await createRegistrationChallenge({
+      request,
+      userId: uid,
+      userEmail: user.email,
     })
 
-    const challengeRow = await prisma.webAuthnChallenge.create({
-      data: {
-        userId: uid,
-        challenge: options.challenge,
-        type: "registration",
-        expiresAt: new Date(Date.now() + 1000 * 60 * 5),
-      },
-    })
-
-    return NextResponse.json({ challengeId: challengeRow.id, options })
+    return NextResponse.json({ challengeId, options })
   } catch (error) {
     console.error("Passkey registration options error:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })

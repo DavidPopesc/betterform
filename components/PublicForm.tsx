@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { sanitizeBlobFilename } from '@/lib/blob'
 import type { SubmissionLocation } from '@/lib/location'
+import { SignaturePad } from '@/components/ui/signature-pad'
+import { isSignatureValueEmpty, type SignatureValue } from '@/lib/form-schema'
 import { Annoyed, Check, Frown, Laugh, Lock, Mail, MapPin, Meh, Smile, Star, X } from 'lucide-react'
 
 interface Field {
@@ -26,6 +28,22 @@ interface Field {
   correctAnswer?: string | string[]
   scaleStyle?: 'numbers' | 'stars' | 'faces'
   scaleMax?: number
+  content?: string
+  signatureMode?: 'draw' | 'type' | 'either'
+}
+
+type ResponseValue = string | string[] | number | SignatureValue
+
+function collectDeviceMetadata() {
+  if (typeof window === 'undefined') return null
+  return {
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    language: navigator.language,
+    platform: navigator.platform,
+    screenWidth: window.screen?.width,
+    screenHeight: window.screen?.height,
+    colorDepth: window.screen?.colorDepth,
+  }
 }
 
 interface PublicFormProps {
@@ -129,7 +147,7 @@ export default function PublicForm({
   },
 }: PublicFormProps) {
   const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
-  const [responses, setResponses] = useState<Record<string, string | string[] | number>>({})
+  const [responses, setResponses] = useState<Record<string, ResponseValue>>({})
   const [fileResponses, setFileResponses] = useState<Record<string, File[]>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRequestingLocation, setIsRequestingLocation] = useState(false)
@@ -147,6 +165,7 @@ export default function PublicForm({
 
   const hiddenFieldIdSet = new Set(hiddenFieldIds)
   const hasVerifiedEmailField = fields.some((field) => field.type === 'email' && field.requireVerifiedEmail)
+  const hasSignatureField = fields.some((field) => field.type === 'signature')
   const locationRequiredForSubmission = locationSettings.requireLocationOnSubmit || locationSettings.geoLockEnabled
   const storageKey = `form-responses-${publicId}`
   const prefilledSerialized = useMemo(() => JSON.stringify(prefillValues), [prefillValues])
@@ -180,6 +199,13 @@ export default function PublicForm({
     }
   }, [responses, storageKey])
 
+  // Kept in a ref (rather than a dependency) so typing anywhere else in the form doesn't
+  // tear down and restart the polling interval below before it gets a chance to fire.
+  const responsesRef = useRef(responses)
+  responsesRef.current = responses
+
+  const hasPendingVerification = Object.values(verificationSent).some(Boolean)
+
   useEffect(() => {
     if (!hasVerifiedEmailField) return
 
@@ -197,7 +223,7 @@ export default function PublicForm({
             if (hasNewEmails) {
               const emailField = fields.find((field) => field.type === 'email' && field.requireVerifiedEmail)
               if (emailField) {
-                const currentEmail = responses[emailField.id] as string
+                const currentEmail = responsesRef.current[emailField.id] as string
                 const wasJustVerified = nextEmails.find(
                   (email) => email.toLowerCase().trim() === currentEmail?.toLowerCase().trim()
                 )
@@ -217,11 +243,11 @@ export default function PublicForm({
 
     fetchVerifiedEmails()
 
-    if (Object.values(verificationSent).some(Boolean)) {
+    if (hasPendingVerification) {
       const interval = setInterval(fetchVerifiedEmails, 5000)
       return () => clearInterval(interval)
     }
-  }, [fields, hasVerifiedEmailField, responses, verificationSent])
+  }, [fields, hasVerifiedEmailField, hasPendingVerification, verificationSent])
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -276,13 +302,24 @@ export default function PublicForm({
   const visiblePageFields = pageFields.filter((field) => !hiddenFieldIdSet.has(field.id))
   const isLastPage = !hasSections || currentPage >= sections.length
 
-  const handleInputChange = (fieldId: string, value: string | string[] | number) => {
-    setResponses((prev) => ({ ...prev, [fieldId]: value }))
+  const handleInputChange = (fieldId: string, value: ResponseValue | undefined) => {
+    setResponses((prev) => {
+      if (value === undefined) {
+        const next = { ...prev }
+        delete next[fieldId]
+        return next
+      }
+      return { ...prev, [fieldId]: value }
+    })
   }
 
   const hasFieldValue = (field: Field) => {
     if (field.type === 'file_upload') {
       return (fileResponses[field.id] || []).length > 0
+    }
+
+    if (field.type === 'signature') {
+      return !isSignatureValueEmpty(responses[field.id])
     }
 
     const value = responses[field.id]
@@ -311,7 +348,7 @@ export default function PublicForm({
 
   const handleNext = () => {
     const missingRequired = pageFields.filter(
-      (field) => field.required && field.type !== 'text' && field.type !== 'section' && !hasFieldValue(field)
+      (field) => field.required && field.type !== 'text' && field.type !== 'section' && field.type !== 'legal_text' && !hasFieldValue(field)
     )
 
     if (missingRequired.length > 0) {
@@ -425,7 +462,7 @@ export default function PublicForm({
     setError('')
 
     const missingRequired = fields.filter(
-      (field) => field.required && field.type !== 'text' && field.type !== 'section' && !hasFieldValue(field)
+      (field) => field.required && field.type !== 'text' && field.type !== 'section' && field.type !== 'legal_text' && !hasFieldValue(field)
     )
     if (missingRequired.length > 0) {
       setError('Please fill in all required fields')
@@ -479,6 +516,7 @@ export default function PublicForm({
           responses,
           location: submissionLocation,
           uploadedAttachments,
+          deviceMetadata: hasSignatureField ? collectDeviceMetadata() : null,
         }),
       })
 
@@ -569,13 +607,25 @@ export default function PublicForm({
       return null
     }
 
+    if (field.type === 'legal_text') {
+      return (
+        <div className="space-y-2">
+          {field.label ? <h3 className="text-lg font-semibold text-slate-900">{field.label}</h3> : null}
+          <div className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            {field.content || ''}
+          </div>
+        </div>
+      )
+    }
+
     const value = responses[field.id] ?? ''
+    const scalarValue = typeof value === 'string' || typeof value === 'number' ? value : ''
 
     switch (field.type) {
       case 'short_text':
         return (
           <Input
-            value={value}
+            value={scalarValue}
             onChange={(e) => handleInputChange(field.id, e.target.value)}
             placeholder="Your answer"
             required={field.required}
@@ -585,7 +635,7 @@ export default function PublicForm({
       case 'paragraph':
         return (
           <textarea
-            value={value}
+            value={scalarValue}
             onChange={(e) => handleInputChange(field.id, e.target.value)}
             placeholder="Your answer"
             required={field.required}
@@ -727,7 +777,7 @@ export default function PublicForm({
         return (
           <Input
             type="email"
-            value={value}
+            value={scalarValue}
             onChange={(e) => handleInputChange(field.id, e.target.value)}
             placeholder="your.email@example.com"
             required={field.required}
@@ -738,7 +788,7 @@ export default function PublicForm({
         return (
           <Input
             type="tel"
-            value={value}
+            value={scalarValue}
             onChange={(e) => handleInputChange(field.id, e.target.value)}
             placeholder="+1 (555) 000-0000"
             required={field.required}
@@ -792,7 +842,7 @@ export default function PublicForm({
       case 'dropdown':
         return (
           <select
-            value={value}
+            value={scalarValue}
             onChange={(e) => handleInputChange(field.id, e.target.value)}
             required={field.required}
             className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
@@ -810,7 +860,7 @@ export default function PublicForm({
         return (
           <Input
             type="date"
-            value={value}
+            value={scalarValue}
             onChange={(e) => handleInputChange(field.id, e.target.value)}
             required={field.required}
           />
@@ -820,7 +870,7 @@ export default function PublicForm({
         return (
           <Input
             type="time"
-            value={value}
+            value={scalarValue}
             onChange={(e) => handleInputChange(field.id, e.target.value)}
             required={field.required}
           />
@@ -920,10 +970,21 @@ export default function PublicForm({
         )
       }
 
+      case 'signature': {
+        const signatureValue = value && typeof value === 'object' && !Array.isArray(value) ? (value as SignatureValue) : undefined
+        return (
+          <SignaturePad
+            mode={field.signatureMode || 'either'}
+            value={signatureValue}
+            onChange={(next) => handleInputChange(field.id, next)}
+          />
+        )
+      }
+
       default:
         return (
           <Input
-            value={value}
+            value={scalarValue}
             onChange={(e) => handleInputChange(field.id, e.target.value)}
             placeholder="Your answer"
             required={field.required}
@@ -940,7 +1001,7 @@ export default function PublicForm({
           <h1 className="mb-2 text-3xl font-bold">{formName || 'Untitled form'}</h1>
           {isQuiz ? (() => {
             const totalPoints = fields.reduce((sum, field) => {
-              if (['text', 'section', 'email', 'phone'].includes(field.type)) return sum
+              if (['text', 'section', 'email', 'phone', 'legal_text', 'signature'].includes(field.type)) return sum
               return sum + (field.points || 0)
             }, 0)
             if (totalPoints === 0) return null
@@ -968,7 +1029,7 @@ export default function PublicForm({
             <div className="space-y-4">
               {visiblePageFields.map((field) => (
                 <Card key={field.id} className="p-6">
-                  {field.type !== 'text' ? (
+                  {field.type !== 'text' && field.type !== 'legal_text' ? (
                     <>
                       <Label className="mb-3 block text-base">
                         {field.label}

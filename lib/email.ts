@@ -69,6 +69,52 @@ export async function sendVerificationEmail(userId: string, userEmail: string) {
   return { sent: true, expiresAt };
 }
 
+export async function sendPasswordResetEmail(userId: string, userEmail: string) {
+  const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = sha256Hex(token);
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1h
+
+  const { default: _prisma } = await import('./db')
+  await _prisma.passwordReset.create({
+    data: {
+      userId,
+      tokenHash,
+      expiresAt,
+    },
+  });
+
+  const resetUrl = `${APP_URL}/reset-password?t=${token}&uid=${userId}`;
+
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: userEmail,
+    subject: "Reset your Better Form password",
+    html: `
+      <div style="background:#f8fafc;padding:24px;font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;">
+        <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+          <div style="padding:24px 24px 8px 24px;">
+            <p style="margin:0;font-size:13px;line-height:20px;color:#64748b;">Better Form</p>
+            <h1 style="margin:8px 0 0 0;font-size:22px;line-height:30px;font-weight:600;color:#0f172a;">Reset your password</h1>
+          </div>
+          <div style="padding:16px 24px 0 24px;font-size:15px;line-height:24px;color:#334155;">
+            <p style="margin:0 0 14px 0;">You requested to reset the password for <strong>${escapeHtml(userEmail)}</strong>.</p>
+            <p style="margin:0 0 18px 0;">Open the link below to choose a new password.</p>
+          </div>
+          <div style="padding:0 24px 24px 24px;">
+            <a href="${resetUrl}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:8px;font-size:14px;font-weight:600;">Reset password</a>
+            <p style="margin:14px 0 0 0;font-size:12px;line-height:18px;color:#64748b;word-break:break-all;">${resetUrl}</p>
+          </div>
+          <div style="border-top:1px solid #e2e8f0;padding:14px 24px 20px 24px;">
+            <p style="margin:0;font-size:12px;line-height:18px;color:#64748b;">If you didn't request this, you can safely ignore this email. This link expires in 1 hour.</p>
+          </div>
+        </div>
+      </div>
+    `,
+  });
+
+  return { sent: true, expiresAt };
+}
+
 export async function sendLoginApprovalEmail(userId: string, userEmail: string, approvalId: string) {
   const token = crypto.randomBytes(32).toString("hex");
   const tokenHash = sha256Hex(token);
@@ -168,6 +214,87 @@ export async function sendFormSubmissionAlert(params: {
   })
 }
 
+type ContractEmailField = {
+  id: string
+  type: string
+  label?: string
+  content?: string
+  options?: Array<{ id: string; label: string }>
+}
+
+function formatContractFieldValue(field: ContractEmailField, value: unknown): string {
+  if (field.type === 'signature') {
+    if (value && typeof value === 'object') {
+      const sig = value as { mode?: string; text?: string }
+      if (sig.mode === 'type' && sig.text) return sig.text
+      if (sig.mode === 'draw') return 'Signed (drawn signature)'
+    }
+    return '—'
+  }
+  if (value === undefined || value === null || value === '') return '—'
+  if (['multiple_choice', 'dropdown'].includes(field.type)) {
+    const option = field.options?.find((o) => o.id === String(value))
+    return option?.label || String(value)
+  }
+  if (field.type === 'checkboxes' && Array.isArray(value)) {
+    return value.map((item) => field.options?.find((o) => o.id === String(item))?.label || String(item)).join(', ')
+  }
+  if (Array.isArray(value)) return value.map((v) => String(v)).join(', ')
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+export async function sendSignedContractEmail(params: {
+  to: string
+  formName: string
+  fields: ContractEmailField[]
+  responses: Record<string, unknown>
+  pdfBuffer: Buffer
+  signedAt: Date
+}) {
+  const rows = params.fields
+    .filter((field) => field.type !== 'legal_text')
+    .map((field) => {
+      const value = formatContractFieldValue(field, params.responses[field.id])
+      return `<tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;vertical-align:top;">${escapeHtml(field.label || field.id)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(value)}</td>
+      </tr>`
+    })
+    .join("")
+
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: params.to,
+    subject: `Signed: ${params.formName}`,
+    html: `
+      <div style="background:#f8fafc;padding:24px;font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;">
+        <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
+          <div style="padding:24px 24px 8px;">
+            <p style="margin:0;font-size:13px;line-height:20px;color:#64748b;">Better Form</p>
+            <h1 style="margin:8px 0 0;font-size:22px;line-height:30px;font-weight:700;">${escapeHtml(params.formName)} has been signed</h1>
+          </div>
+          <div style="padding:16px 24px 0;font-size:15px;line-height:24px;color:#334155;">
+            <p style="margin:0 0 12px;">A copy of the signed contract is attached as a PDF. All submitted fields are also listed below.</p>
+          </div>
+          <div style="padding:0 24px 24px;">
+            <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+              ${rows || '<tr><td style="padding:12px;">No fields on this form.</td></tr>'}
+            </table>
+            <p style="margin:14px 0 0;font-size:12px;line-height:18px;color:#64748b;">Signed at ${params.signedAt.toISOString()}</p>
+          </div>
+        </div>
+      </div>
+    `,
+    attachments: [
+      {
+        filename: `${params.formName.replace(/[^a-z0-9-_ ]/gi, '') || 'contract'}.pdf`,
+        content: params.pdfBuffer,
+      },
+    ],
+  })
+}
+
 export async function sendLimitedPublicViewVisitAlert(params: {
   to: string
   formName: string
@@ -215,6 +342,6 @@ export async function verifyEmailToken(userId: string, presentedToken: string) {
   return { ok: true };
 }
 
-const emailService = { sendVerificationEmail, sendLoginApprovalEmail, sendFormSubmissionAlert, sendLimitedPublicViewVisitAlert, verifyEmailToken };
+const emailService = { sendVerificationEmail, sendPasswordResetEmail, sendLoginApprovalEmail, sendFormSubmissionAlert, sendSignedContractEmail, sendLimitedPublicViewVisitAlert, verifyEmailToken };
 
 export default emailService;
