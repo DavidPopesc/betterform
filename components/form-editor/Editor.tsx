@@ -96,6 +96,15 @@ export const FIELD_TYPES = [
   { value: 'section', label: 'Section' },
 ] as const
 
+export const FILE_TYPE_CATEGORIES = [
+  { key: 'images', label: 'Images', patterns: ['image/*'] },
+  { key: 'pdfs', label: 'PDFs', patterns: ['.pdf'] },
+  { key: 'documents', label: 'Documents', patterns: ['.doc', '.docx', '.txt', '.rtf', '.odt'] },
+  { key: 'spreadsheets', label: 'Spreadsheets', patterns: ['.xls', '.xlsx', '.csv'] },
+  { key: 'videos', label: 'Videos', patterns: ['video/*'] },
+  { key: 'audio', label: 'Audio', patterns: ['audio/*'] },
+] as const
+
 export function getDefaultLabel(type: string): string {
   const fieldType = FIELD_TYPES.find(ft => ft.value === type)
   if (type === 'text') return ''
@@ -332,6 +341,31 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
       return { ...f, ...patch }
     }))
     setIsDirty(true)
+  }
+
+  // Presets just bulk-insert their patterns as individual entries — no persistent
+  // bundle/checkbox state to keep in sync with what's actually in the list.
+  function addPresetFileTypes(field: Field, category: (typeof FILE_TYPE_CATEGORIES)[number]) {
+    const current = field.allowedFileTypes || []
+    const normalized = new Set(current.map((type) => type.trim().toLowerCase()))
+    const toAdd = category.patterns.filter((pattern) => !normalized.has(pattern.toLowerCase()))
+    if (toAdd.length === 0) return
+    updateField(field.id, { allowedFileTypes: [...current, ...toAdd] })
+  }
+
+  function addFileTypeEntry(field: Field) {
+    updateField(field.id, { allowedFileTypes: [...(field.allowedFileTypes || []), ''] })
+  }
+
+  function updateFileTypeEntry(field: Field, index: number, value: string) {
+    const next = [...(field.allowedFileTypes || [])]
+    next[index] = value
+    updateField(field.id, { allowedFileTypes: next })
+  }
+
+  function removeFileTypeEntry(field: Field, index: number) {
+    const next = (field.allowedFileTypes || []).filter((_, i) => i !== index)
+    updateField(field.id, { allowedFileTypes: next })
   }
 
   function handleFieldTypeChange(f: Field, newType: string) {
@@ -918,21 +952,66 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                             <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_120px]">
                               <div>
                                 <label className="mb-1 block text-xs text-muted-foreground">Allowed file types</label>
-                                <Input
-                                  value={(f.allowedFileTypes || []).join(', ')}
-                                  onChange={(e) =>
-                                    updateField(f.id, {
-                                      allowedFileTypes: e.target.value
-                                        .split(',')
-                                        .map((value) => value.trim())
-                                        .filter(Boolean),
-                                    })
-                                  }
-                                  placeholder=".pdf, .png, image/*"
-                                  className="text-sm"
-                                />
+                                <p className="mb-2 text-xs text-muted-foreground">
+                                  {(f.allowedFileTypes || []).filter((t) => t.trim()).length === 0
+                                    ? 'Any file type is allowed.'
+                                    : 'Only the types listed below are allowed.'}
+                                </p>
+                                <div className="mb-3 flex flex-wrap gap-2">
+                                  {FILE_TYPE_CATEGORIES.map((category) => (
+                                    <Button
+                                      key={category.key}
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        addPresetFileTypes(f, category)
+                                      }}
+                                    >
+                                      + {category.label}
+                                    </Button>
+                                  ))}
+                                </div>
+                                <div className="space-y-2">
+                                  {(f.allowedFileTypes || []).map((type, index) => (
+                                    <div key={index} className="flex items-center gap-2">
+                                      <Input
+                                        value={type}
+                                        onChange={(e) => updateFileTypeEntry(f, index, e.target.value)}
+                                        placeholder=".pdf, application/pdf, or image/*"
+                                        className="text-sm"
+                                        onClick={(e) => e.stopPropagation()}
+                                      />
+                                      <Button
+                                        size="icon-sm"
+                                        variant="ghost"
+                                        className="p-0 shrink-0"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          removeFileTypeEntry(f, index)
+                                        }}
+                                        title="Remove"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-muted-foreground"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      addFileTypeEntry(f)
+                                    }}
+                                  >
+                                    + Add file type
+                                  </Button>
+                                </div>
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                  Use extensions like <code>.pdf</code>, MIME types like <code>application/pdf</code>, or wildcards like <code>image/*</code>.
+                                  Each box holds one extension like <code>.pdf</code>, MIME type like <code>application/pdf</code>, or wildcard like <code>image/*</code>.
                                 </p>
                               </div>
                               <div>

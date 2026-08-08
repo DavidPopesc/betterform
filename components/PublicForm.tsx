@@ -877,7 +877,7 @@ export default function PublicForm({
         )
 
       case 'file_upload': {
-        const allowedTypes = field.allowedFileTypes || []
+        const allowedTypes = (field.allowedFileTypes || []).map((t) => t.trim()).filter(Boolean)
         const maxFiles = Math.min(field.maxFiles || 1, 10)
         const selectedFiles = fileResponses[field.id] || []
 
@@ -886,7 +886,7 @@ export default function PublicForm({
             <Input
               type="file"
               multiple={maxFiles > 1}
-              accept={allowedTypes.join(',')}
+              accept={allowedTypes.length > 0 ? allowedTypes.join(',') : undefined}
               onChange={(e) => handleFileChange(field.id, e.target.files, field)}
               required={field.required}
             />

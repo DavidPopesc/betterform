@@ -31,8 +31,11 @@ export function isOwnBlobUrl(value: string, expectedPathPrefix: string) {
 
   if (!/\.blob\.vercel-storage\.com$/i.test(parsed.hostname)) return false
 
+  // `URL` always lowercases `hostname`, but the store ID segment of the token
+  // (used to derive the expected hostname prefix) can be mixed-case — normalize
+  // both sides or every upload fails this check regardless of file type.
   const storeId = getBlobStoreId()
-  if (storeId && !parsed.hostname.startsWith(`${storeId}.`)) return false
+  if (storeId && !parsed.hostname.startsWith(`${storeId.toLowerCase()}.`)) return false
 
   const pathname = parsed.pathname.replace(/^\/+/, '')
   return pathname.startsWith(expectedPathPrefix)

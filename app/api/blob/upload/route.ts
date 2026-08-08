@@ -43,7 +43,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           throw new Error('Upload field not found')
         }
 
-        const allowedContentTypes = (field.allowedFileTypes || []).filter((value) => !value.startsWith('.'))
+        const allowedContentTypes = (field.allowedFileTypes || [])
+          .map((value) => value.trim())
+          .filter((value) => value && !value.startsWith('.'))
         const allowedPathPrefix = `forms/${payload.publicId}/${payload.fieldId}/`
         if (!pathname.startsWith(allowedPathPrefix)) {
           throw new Error('Invalid upload pathname')

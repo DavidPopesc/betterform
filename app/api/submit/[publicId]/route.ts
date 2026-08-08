@@ -409,7 +409,7 @@ export async function POST(
         }, 400)
       }
 
-      const allowedTypes = field.allowedFileTypes || []
+      const allowedTypes = (field.allowedFileTypes || []).map((t) => t.trim()).filter(Boolean)
       const expectedPathPrefix = `forms/${publicId}/${field.id}/`
       const disallowedFile = fieldFiles.find((file) => {
         if (!isOwnBlobUrl(file.url, expectedPathPrefix)) return true
