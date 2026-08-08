@@ -25,9 +25,15 @@ const SAFE_INLINE_CONTENT_TYPES = new Set([
 ])
 
 function resolveContentDisposition(contentType: string, filename: string) {
-  const safeFilename = filename.replace(/["\r\n]/g, '_')
   const disposition = SAFE_INLINE_CONTENT_TYPES.has(contentType.toLowerCase()) ? 'inline' : 'attachment'
-  return `${disposition}; filename="${safeFilename}"`
+  const sanitized = filename.replace(/["\r\n]/g, '_')
+  // Header values must be Latin-1 (ByteString); filenames often aren't (e.g. macOS
+  // screenshot names contain a narrow no-break space, U+202F). Provide an ASCII-only
+  // `filename=` fallback plus the full name percent-encoded via `filename*=` (RFC 6266),
+  // which all modern browsers prefer and use for downloads/inline display.
+  const asciiFallback = sanitized.replace(/[^\x20-\x7E]/g, '_')
+  const encoded = encodeURIComponent(sanitized)
+  return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`
 }
 
 export async function GET(
