@@ -6,14 +6,6 @@ function sha256Hex(input: string) {
   return crypto.createHash('sha256').update(input).digest('hex')
 }
 
-const APP_URL = process.env.APP_URL || ''
-let APP_ORIGIN = ''
-try {
-  APP_ORIGIN = APP_URL ? new URL(APP_URL).origin : ''
-} catch (e) {
-  APP_ORIGIN = ''
-}
-
 function escapeHtml(input?: string) {
   if (!input) return ''
   return String(input)
@@ -40,7 +32,8 @@ function createVerificationPage(
   bgColor: string,
   message: string,
   email?: string,
-  autoClose?: boolean
+  autoClose?: boolean,
+  appOrigin?: string
 ) {
   const safeTitle = escapeHtml(title)
   const safeMessage = escapeHtml(message)
@@ -49,17 +42,17 @@ function createVerificationPage(
   const autoCloseScript = autoClose
     ? (() => {
         const serializedEmail = JSON.stringify(String(safeEmail || ''))
-        if (APP_ORIGIN) {
+        if (appOrigin) {
           return `<script>
       setTimeout(() => {
         if (window.opener) {
-          window.opener.postMessage({ type: 'email-verified', email: ${serializedEmail} }, ${JSON.stringify(APP_ORIGIN)});
+          window.opener.postMessage({ type: 'email-verified', email: ${serializedEmail} }, ${JSON.stringify(appOrigin)});
           window.close();
         }
       }, 3000);
     </script>`
         }
-        // No configured origin: avoid posting with wildcard to prevent origin confusion.
+        // No origin to target: avoid posting with wildcard to prevent origin confusion.
         return `<script>
       setTimeout(() => {
         if (window.opener) {
@@ -200,7 +193,8 @@ export async function GET(request: NextRequest) {
         'bg-green-50',
         'Your email address has been successfully verified. You can now return to the form and submit your response.',
         record.email,
-        true
+        true,
+        request.nextUrl.origin
       ),
       { status: 200, headers: { 'Content-Type': 'text/html' } }
     )
