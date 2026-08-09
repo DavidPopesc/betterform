@@ -58,6 +58,11 @@ model Account {
   // WebAuthn / Passkeys
   passkeys           PasskeyCredential[]
 
+  // Stripe Connect (Standard account, OAuth-linked) — lets forms owned by this
+  // account accept payments; charges land directly on this connected account.
+  stripeAccountId        String?  @unique
+  stripeAccountOnboarded Boolean  @default(false) // mirrors Stripe's `charges_enabled`
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
@@ -96,6 +101,11 @@ model Form {
   notifyOnLimitedViewVisit Boolean @default(false)
   notifyOnFormSubmission Boolean @default(true)
 
+  // Require payment (via the owner's connected Stripe account) before a response is accepted
+  paymentRequired    Boolean @default(false)
+  paymentAmountCents Int?
+  paymentCurrency    String  @default("usd")
+
   // API integration settings
   apiEnabled Boolean @default(false)
   apiKey     String? @unique // Deprecated, keeping for backward compatibility
@@ -108,6 +118,7 @@ model Form {
   responses Response[]
   emailVerifications EmailVerificationRecord[]
   limitedPublicViewVisits LimitedPublicViewVisit[]
+  pendingSubmissions PendingSubmission[]
 
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
@@ -151,11 +162,40 @@ model Response {
   lockedAt       DateTime?
   contractSnapshot Json?     // frozen copy of the form's fields exactly as shown at signing time
 
+  // Payment audit trail (populated when the form has `paymentRequired` on)
+  stripePaymentIntentId String?   @unique
+  amountPaidCents       Int?
+  paymentCurrency       String?
+  paidAt                DateTime?
+
   processed      Boolean     @default(false)
   attachments    Attachment[]
 
   @@index([formId, createdAt])
   @@index([respondentEmail])
+}
+
+// Server-side stash of a submission's payload, created before a PaymentIntent is confirmed
+// so the response can still be finalized (by the client's return call or, as a safety net,
+// the Stripe webhook) even if the browser tab closes right after a successful payment.
+model PendingSubmission {
+  id                    String   @id @default(uuid())
+  formId                String
+  form                  Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  stripePaymentIntentId String   @unique
+  responses             Json
+  uploadedAttachments   Json?
+  submissionLocation    Json?
+  deviceMetadata        Json?
+  respondentEmail       String?
+  respondentIp          String?
+  formAccountId         String?
+  status                String   @default("pending") // pending | completed | expired
+  responseId            String?  // set once finalized, so retries/webhook races can return it instead of recreating
+  createdAt             DateTime @default(now())
+  expiresAt             DateTime
+
+  @@index([formId, status])
 }
 
 model Attachment {

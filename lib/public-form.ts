@@ -24,6 +24,9 @@ export async function getPublicFormPayload(identifier: string, prefillId?: strin
       geoLockLatitude: true,
       geoLockLongitude: true,
       geoLockRadiusMeters: true,
+      paymentRequired: true,
+      paymentAmountCents: true,
+      paymentCurrency: true,
     },
   })
 
@@ -49,6 +52,9 @@ export async function getPublicFormPayload(identifier: string, prefillId?: strin
         geoLockLatitude: true,
         geoLockLongitude: true,
         geoLockRadiusMeters: true,
+        paymentRequired: true,
+        paymentAmountCents: true,
+        paymentCurrency: true,
       },
     })
 
@@ -123,6 +129,11 @@ export async function getPublicFormPayload(identifier: string, prefillId?: strin
       geoLockLatitude: form.geoLockLatitude ?? null,
       geoLockLongitude: form.geoLockLongitude ?? null,
       geoLockRadiusMeters: form.geoLockRadiusMeters ?? null,
+    },
+    paymentSettings: {
+      paymentRequired: form.paymentRequired ?? false,
+      paymentAmountCents: form.paymentAmountCents ?? null,
+      paymentCurrency: form.paymentCurrency ?? 'usd',
     },
     allowAnotherResponse: form.allowAnotherResponse ?? false,
   }

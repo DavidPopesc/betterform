@@ -31,6 +31,7 @@ function resolveContentDisposition(contentType: string, filename: string) {
   // screenshot names contain a narrow no-break space, U+202F). Provide an ASCII-only
   // `filename=` fallback plus the full name percent-encoded via `filename*=` (RFC 6266),
   // which all modern browsers prefer and use for downloads/inline display.
+  // why does macos have to be so special (wilt emoji)
   const asciiFallback = sanitized.replace(/[^\x20-\x7E]/g, '_')
   const encoded = encodeURIComponent(sanitized)
   return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`

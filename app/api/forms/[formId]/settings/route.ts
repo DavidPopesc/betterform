@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSessionUser } from '@/lib/auth-server'
+import { parseFormSchema } from '@/lib/form-schema'
 import crypto from 'crypto'
 
 export async function GET(
@@ -43,9 +44,12 @@ export async function GET(
         geoLockRadiusMeters: true,
         notifyOnLimitedViewVisit: true,
         notifyOnFormSubmission: true,
+        paymentRequired: true,
+        paymentAmountCents: true,
+        paymentCurrency: true,
       }
     })
-    
+
     if (!form || form.accountId !== user.id) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
@@ -73,6 +77,9 @@ export async function GET(
       geoLockRadiusMeters: form.geoLockRadiusMeters,
       notifyOnLimitedViewVisit: form.notifyOnLimitedViewVisit,
       notifyOnFormSubmission: form.notifyOnFormSubmission,
+      paymentRequired: form.paymentRequired,
+      paymentAmountCents: form.paymentAmountCents,
+      paymentCurrency: form.paymentCurrency,
     })
   } catch (err) {
     console.error('Fetch settings error:', err)
@@ -95,20 +102,20 @@ export async function POST(
     const { default: prisma } = await import('@/lib/db')
     
     // Verify form ownership
-    const form = await prisma.form.findUnique({ 
+    const form = await prisma.form.findUnique({
       where: { id: formId },
-      select: { 
-        accountId: true, 
-        apiEnabled: true, 
+      select: {
+        accountId: true,
+        apiEnabled: true,
         submissionApiKey: true,
         dataApiKey: true,
         webhookUrl: true,
-        theme: true, 
-        isQuiz: true, 
-        showScore: true, 
-        successMessage: true, 
+        theme: true,
+        isQuiz: true,
+        showScore: true,
+        successMessage: true,
         allowAnotherResponse: true,
-        responsesEnabled: true, 
+        responsesEnabled: true,
         responseDeadline: true,
         oneResponsePerEmail: true,
         oneResponsePerUser: true,
@@ -119,6 +126,10 @@ export async function POST(
         geoLockRadiusMeters: true,
         notifyOnLimitedViewVisit: true,
         notifyOnFormSubmission: true,
+        paymentRequired: true,
+        paymentAmountCents: true,
+        paymentCurrency: true,
+        schema: true,
       }
     })
     
@@ -369,6 +380,53 @@ export async function POST(
         geoLockLongitude,
         geoLockRadiusMeters,
       })
+    }
+
+    if (body.paymentSettings !== undefined) {
+      const rawSettings = typeof body.paymentSettings === 'object' && body.paymentSettings !== null
+        ? body.paymentSettings as Record<string, unknown>
+        : {}
+
+      const paymentRequired = Boolean(rawSettings.paymentRequired)
+      const paymentAmountCents = rawSettings.paymentAmountCents === '' || rawSettings.paymentAmountCents === null || rawSettings.paymentAmountCents === undefined
+        ? null
+        : Number.parseInt(String(rawSettings.paymentAmountCents), 10)
+      const paymentCurrency = typeof rawSettings.paymentCurrency === 'string' && rawSettings.paymentCurrency.trim()
+        ? rawSettings.paymentCurrency.trim().toLowerCase().slice(0, 3)
+        : 'usd'
+
+      if (paymentRequired) {
+        if (!Number.isFinite(paymentAmountCents) || paymentAmountCents === null || paymentAmountCents <= 0) {
+          return NextResponse.json({ error: 'invalid_payment_amount' }, { status: 400 })
+        }
+
+        const account = await prisma.account.findUnique({
+          where: { id: form.accountId },
+          select: { stripeAccountId: true, stripeAccountOnboarded: true },
+        })
+        if (!account?.stripeAccountId || !account.stripeAccountOnboarded) {
+          return NextResponse.json({ error: 'stripe_not_connected' }, { status: 400 })
+        }
+
+        const schema = parseFormSchema(form.schema)
+        const hasVerifiedEmailField = schema.fields.some(
+          (field) => field.type === 'email' && field.requireVerifiedEmail
+        )
+        if (!hasVerifiedEmailField) {
+          return NextResponse.json({ error: 'missing_verified_email_field' }, { status: 400 })
+        }
+      }
+
+      await prisma.form.update({
+        where: { id: formId },
+        data: {
+          paymentRequired,
+          paymentAmountCents,
+          paymentCurrency,
+        },
+      })
+
+      return NextResponse.json({ paymentRequired, paymentAmountCents, paymentCurrency })
     }
 
     // Handle webhook URL

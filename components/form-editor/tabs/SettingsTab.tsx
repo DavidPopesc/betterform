@@ -47,7 +47,7 @@ const THEMES = [
 
 export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeChange }: SettingsTabProps) {
   const [publicId, setPublicId] = useState<string>('')
-  const [formFields, setFormFields] = useState<Array<{ id: string; label: string; type: string; options?: Array<{ id: string; label: string }> }>>([])
+  const [formFields, setFormFields] = useState<Array<{ id: string; label: string; type: string; options?: Array<{ id: string; label: string }>; requireVerifiedEmail?: boolean }>>([])
   const [views, setViews] = useState<LimitedPublicView[]>([])
   const [viewStats, setViewStats] = useState<Record<string, LimitedPublicViewVisitStat>>({})
   const [viewName, setViewName] = useState('')
@@ -74,6 +74,12 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const [geoLockRadiusMeters, setGeoLockRadiusMeters] = useState('100')
   const [notifyOnLimitedViewVisit, setNotifyOnLimitedViewVisit] = useState(false)
   const [notifyOnFormSubmission, setNotifyOnFormSubmission] = useState(true)
+  const [paymentRequired, setPaymentRequired] = useState(false)
+  const [paymentAmount, setPaymentAmount] = useState('') // dollars, as typed
+  const [paymentCurrency, setPaymentCurrency] = useState('usd')
+  const [stripeConnected, setStripeConnected] = useState(false)
+  const [stripeOnboarded, setStripeOnboarded] = useState(false)
+  const [paymentSettingsMessage, setPaymentSettingsMessage] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState('Your response has been recorded.')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -81,7 +87,10 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const successMessageTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const webhookUrlTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const locationSettingsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const paymentSettingsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const didLoadLocationSettingsRef = useRef(false)
+  const didLoadPaymentSettingsRef = useRef(false)
+  const hasVerifiedEmailField = formFields.some((field) => field.type === 'email' && field.requireVerifiedEmail)
   const deadlineDate = responseDeadline ? responseDeadline.slice(0, 10) : ''
   const deadlineTime = responseDeadline ? responseDeadline.slice(11, 16) : ''
   const sharedViewUrl = (viewId: string) => `/responses/view/${viewId}`
@@ -151,11 +160,12 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         
         // Extract fields from schema
         if (data.schema?.fields) {
-          const fields = data.schema.fields.map((f: { id: string; label: string; type: string }) => ({
+          const fields = data.schema.fields.map((f: { id: string; label: string; type: string; requireVerifiedEmail?: boolean }) => ({
             id: f.id,
             label: f.label || 'Untitled',
             type: f.type,
             options: (f as { options?: Array<{ id: string; label: string }> }).options || [],
+            requireVerifiedEmail: f.requireVerifiedEmail || false,
           }))
           setFormFields(fields)
         }
@@ -180,6 +190,13 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
         setNotifyOnLimitedViewVisit(data.notifyOnLimitedViewVisit || false)
         setNotifyOnFormSubmission(data.notifyOnFormSubmission !== undefined ? Boolean(data.notifyOnFormSubmission) : true)
         setSuccessMessage(data.successMessage || 'Your response has been recorded.')
+        setPaymentRequired(data.paymentRequired || false)
+        setPaymentAmount(
+          data.paymentAmountCents !== null && data.paymentAmountCents !== undefined
+            ? (data.paymentAmountCents / 100).toFixed(2)
+            : ''
+        )
+        setPaymentCurrency(data.paymentCurrency || 'usd')
       }
     } catch (err) {
       console.error('Failed to load settings:', err)
@@ -187,6 +204,18 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
       setLoading(false)
     }
   }, [formId, onThemeChange])
+
+  const loadStripeStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/account/stripe/status')
+      if (!res.ok) return
+      const data = await res.json()
+      setStripeConnected(Boolean(data.connected))
+      setStripeOnboarded(Boolean(data.onboarded))
+    } catch (err) {
+      console.error('Failed to load Stripe status:', err)
+    }
+  }, [])
 
   const loadSharing = useCallback(async () => {
     try {
@@ -208,7 +237,8 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   useEffect(() => {
     loadSettings()
     loadSharing()
-  }, [loadSettings, loadSharing])
+    loadStripeStatus()
+  }, [loadSettings, loadSharing, loadStripeStatus])
 
   // Debounce success message updates
   useEffect(() => {
@@ -332,6 +362,81 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
     geoLockLongitude,
     geoLockRadiusMeters,
   ])
+
+  useEffect(() => {
+    if (loading) return
+
+    if (!didLoadPaymentSettingsRef.current) {
+      didLoadPaymentSettingsRef.current = true
+      return
+    }
+
+    if (paymentSettingsTimeoutRef.current) {
+      clearTimeout(paymentSettingsTimeoutRef.current)
+    }
+
+    setPaymentSettingsMessage('Saving payment settings...')
+
+    paymentSettingsTimeoutRef.current = setTimeout(async () => {
+      setSaving(true)
+
+      try {
+        const paymentAmountCents = paymentAmount.trim() === ''
+          ? null
+          : Math.round(Number.parseFloat(paymentAmount) * 100)
+
+        const res = await fetch(`/api/forms/${formId}/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            paymentSettings: {
+              paymentRequired,
+              paymentAmountCents,
+              paymentCurrency,
+            },
+          }),
+        })
+
+        if (!res.ok) {
+          const data = await res.json()
+          if (data.error === 'stripe_not_connected') {
+            setPaymentSettingsMessage('Connect a Stripe account in Account settings before requiring payment.')
+            setPaymentRequired(false)
+          } else if (data.error === 'missing_verified_email_field') {
+            setPaymentSettingsMessage('Add a required, verified email field to this form before requiring payment.')
+            setPaymentRequired(false)
+          } else if (data.error === 'invalid_payment_amount') {
+            // Amount is probably still mid-edit — leave the toggle on so the user can just fix the amount.
+            setPaymentSettingsMessage('Enter a payment amount greater than $0.')
+          } else {
+            setPaymentSettingsMessage('Could not save payment settings. Check the values and try again.')
+          }
+          return
+        }
+
+        const data = await res.json()
+        setPaymentRequired(Boolean(data.paymentRequired))
+        setPaymentAmount(
+          data.paymentAmountCents !== null && data.paymentAmountCents !== undefined
+            ? (data.paymentAmountCents / 100).toFixed(2)
+            : ''
+        )
+        setPaymentCurrency(data.paymentCurrency || 'usd')
+        setPaymentSettingsMessage('Payment settings saved.')
+      } catch (err) {
+        console.error('Failed to save payment settings:', err)
+        setPaymentSettingsMessage('Could not save payment settings. Please try again.')
+      } finally {
+        setSaving(false)
+      }
+    }, 800)
+
+    return () => {
+      if (paymentSettingsTimeoutRef.current) {
+        clearTimeout(paymentSettingsTimeoutRef.current)
+      }
+    }
+  }, [formId, loading, paymentRequired, paymentAmount, paymentCurrency])
 
   async function updateTheme(newTheme: string) {
     onThemeChange(newTheme)
@@ -944,6 +1049,86 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
               </>
             )}
           </div>
+        </Card>
+
+        <Card className="p-6">
+          <h4 className="font-semibold mb-4">Payments</h4>
+          <p className="text-sm text-muted-foreground mb-4">
+            Require respondents to pay before their response is accepted.
+          </p>
+
+          {!stripeConnected ? (
+            <p className="text-sm text-muted-foreground">
+              Connect a Stripe account in{' '}
+              <a href="/account" className="underline underline-offset-2" target="_blank" rel="noreferrer">
+                Account settings
+              </a>{' '}
+              to accept payments on this form.
+            </p>
+          ) : !stripeOnboarded ? (
+            <p className="text-sm text-amber-600">
+              Your Stripe account is connected but onboarding isn&apos;t finished yet — finish setup in
+              your Stripe dashboard before requiring payment.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <span className="text-muted-foreground">Require payment to submit</span>
+                <input
+                  type="checkbox"
+                  checked={paymentRequired}
+                  onChange={() => setPaymentRequired((current) => !current)}
+                  disabled={saving || !hasVerifiedEmailField}
+                  className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
+                    before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
+                    checked:before:translate-x-5 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </label>
+
+              {!hasVerifiedEmailField ? (
+                <p className="text-xs text-amber-600 -mt-2">
+                  Add a required, verified email field to this form (in the Questions tab) before you can
+                  require payment.
+                </p>
+              ) : null}
+
+              {paymentRequired && (
+                <div className="grid gap-3 md:grid-cols-[140px_100px] items-end">
+                  <div>
+                    <label className="mb-1 block text-xs text-muted-foreground">Amount</label>
+                    <Input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      placeholder="10.00"
+                      disabled={saving}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-muted-foreground">Currency</label>
+                    <select
+                      value={paymentCurrency}
+                      onChange={(e) => setPaymentCurrency(e.target.value)}
+                      disabled={saving}
+                      className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm h-9"
+                    >
+                      <option value="usd">USD</option>
+                      <option value="eur">EUR</option>
+                      <option value="gbp">GBP</option>
+                      <option value="cad">CAD</option>
+                      <option value="aud">AUD</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {paymentSettingsMessage ? (
+                <p className="text-xs text-muted-foreground">{paymentSettingsMessage}</p>
+              ) : null}
+            </div>
+          )}
         </Card>
 
         <Card className="p-6">

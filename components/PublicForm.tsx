@@ -11,8 +11,9 @@ import { Label } from '@/components/ui/label'
 import { sanitizeBlobFilename } from '@/lib/blob'
 import type { SubmissionLocation } from '@/lib/location'
 import { SignaturePad } from '@/components/ui/signature-pad'
+import StripePaymentStep from '@/components/StripePaymentStep'
 import { isSignatureValueEmpty, type SignatureValue } from '@/lib/form-schema'
-import { Annoyed, Check, Frown, Laugh, Lock, Mail, MapPin, Meh, Smile, Star, X } from 'lucide-react'
+import { Annoyed, Check, CreditCard, Frown, Laugh, Lock, Mail, MapPin, Meh, Smile, Star, X } from 'lucide-react'
 
 interface Field {
   id: string
@@ -66,6 +67,16 @@ interface PublicFormProps {
     geoLockLongitude: number | null
     geoLockRadiusMeters: number | null
   }
+  paymentSettings?: {
+    paymentRequired: boolean
+    paymentAmountCents: number | null
+    paymentCurrency: string
+  }
+}
+
+type PaymentIntentInfo = {
+  clientSecret: string
+  connectedAccountId: string
 }
 
 const THEME_COLORS: Record<string, { bg: string }> = {
@@ -145,6 +156,11 @@ export default function PublicForm({
     geoLockLongitude: null,
     geoLockRadiusMeters: null,
   },
+  paymentSettings = {
+    paymentRequired: false,
+    paymentAmountCents: null,
+    paymentCurrency: 'usd',
+  },
 }: PublicFormProps) {
   const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [responses, setResponses] = useState<Record<string, ResponseValue>>({})
@@ -152,6 +168,7 @@ export default function PublicForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRequestingLocation, setIsRequestingLocation] = useState(false)
   const [isUploadingFiles, setIsUploadingFiles] = useState(false)
+  const [paymentIntentInfo, setPaymentIntentInfo] = useState<PaymentIntentInfo | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [score, setScore] = useState<{ earned: number; total: number } | null>(null)
   const [error, setError] = useState('')
@@ -507,7 +524,13 @@ export default function PublicForm({
         }
       }
 
-      const res = await fetch(`/api/submit/${publicId}`, {
+      const deviceMetadata = hasSignatureField || paymentSettings.paymentRequired ? collectDeviceMetadata() : null
+
+      const endpoint = paymentSettings.paymentRequired
+        ? `/api/submit/${publicId}/payment-intent`
+        : `/api/submit/${publicId}`
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -516,7 +539,7 @@ export default function PublicForm({
           responses,
           location: submissionLocation,
           uploadedAttachments,
-          deviceMetadata: hasSignatureField ? collectDeviceMetadata() : null,
+          deviceMetadata,
         }),
       })
 
@@ -540,6 +563,11 @@ export default function PublicForm({
         } else {
           setError(data.message || 'Failed to submit form. Please try again.')
         }
+        return
+      }
+
+      if (paymentSettings.paymentRequired) {
+        setPaymentIntentInfo({ clientSecret: data.clientSecret, connectedAccountId: data.connectedAccountId })
         return
       }
 
@@ -1024,6 +1052,22 @@ export default function PublicForm({
             <h2 className="mb-2 text-2xl font-semibold">Form Closed</h2>
             <p className="text-muted-foreground">{closedReason}</p>
           </Card>
+        ) : paymentIntentInfo ? (
+          <StripePaymentStep
+            publicId={publicId}
+            clientSecret={paymentIntentInfo.clientSecret}
+            connectedAccountId={paymentIntentInfo.connectedAccountId}
+            onCancel={() => setPaymentIntentInfo(null)}
+            onSuccess={() => {
+              try {
+                localStorage.removeItem(storageKey)
+              } catch (err) {
+                console.error('Failed to clear saved responses:', err)
+              }
+              setPaymentIntentInfo(null)
+              setSubmitted(true)
+            }}
+          />
         ) : (
           <form onSubmit={handleSubmit}>
             <div className="space-y-4">
@@ -1065,6 +1109,24 @@ export default function PublicForm({
               </div>
             ) : null}
 
+            {paymentSettings.paymentRequired && paymentSettings.paymentAmountCents ? (
+              <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                <div className="flex items-start gap-2">
+                  <CreditCard className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>
+                    Payment of{' '}
+                    <span className="font-medium">
+                      {new Intl.NumberFormat('en-US', {
+                        style: 'currency',
+                        currency: paymentSettings.paymentCurrency,
+                      }).format(paymentSettings.paymentAmountCents / 100)}
+                    </span>{' '}
+                    is required before this form can be submitted.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-6 flex items-center justify-between">
               <div>
                 {currentPage > 0 ? (
@@ -1076,7 +1138,17 @@ export default function PublicForm({
               <div>
                 {isLastPage ? (
                   <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? (isRequestingLocation ? 'Checking location...' : isUploadingFiles ? 'Uploading files...' : 'Submitting...') : 'Submit'}
+                    {isSubmitting
+                      ? isRequestingLocation
+                        ? 'Checking location...'
+                        : isUploadingFiles
+                          ? 'Uploading files...'
+                          : paymentSettings.paymentRequired
+                            ? 'Preparing payment...'
+                            : 'Submitting...'
+                      : paymentSettings.paymentRequired
+                        ? 'Continue to Payment'
+                        : 'Submit'}
                   </Button>
                 ) : (
                   <Button type="button" onClick={handleNext}>
