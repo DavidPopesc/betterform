@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { upload } from '@vercel/blob/client'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -11,8 +11,9 @@ import { Label } from '@/components/ui/label'
 import { sanitizeBlobFilename } from '@/lib/blob'
 import type { SubmissionLocation } from '@/lib/location'
 import { SignaturePad } from '@/components/ui/signature-pad'
+import StripePaymentStep from '@/components/StripePaymentStep'
 import { isSignatureValueEmpty, type SignatureValue } from '@/lib/form-schema'
-import { Annoyed, Check, Frown, Laugh, Lock, Mail, MapPin, Meh, Smile, Star, X } from 'lucide-react'
+import { Annoyed, Check, CreditCard, Frown, Laugh, Lock, Mail, MapPin, Meh, Smile, Star, X } from 'lucide-react'
 
 interface Field {
   id: string
@@ -66,6 +67,16 @@ interface PublicFormProps {
     geoLockLongitude: number | null
     geoLockRadiusMeters: number | null
   }
+  paymentSettings?: {
+    paymentRequired: boolean
+    paymentAmountCents: number | null
+    paymentCurrency: string
+  }
+}
+
+type PaymentIntentInfo = {
+  clientSecret: string
+  connectedAccountId: string
 }
 
 const THEME_COLORS: Record<string, { bg: string }> = {
@@ -145,6 +156,11 @@ export default function PublicForm({
     geoLockLongitude: null,
     geoLockRadiusMeters: null,
   },
+  paymentSettings = {
+    paymentRequired: false,
+    paymentAmountCents: null,
+    paymentCurrency: 'usd',
+  },
 }: PublicFormProps) {
   const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [responses, setResponses] = useState<Record<string, ResponseValue>>({})
@@ -152,11 +168,13 @@ export default function PublicForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRequestingLocation, setIsRequestingLocation] = useState(false)
   const [isUploadingFiles, setIsUploadingFiles] = useState(false)
+  const [paymentIntentInfo, setPaymentIntentInfo] = useState<PaymentIntentInfo | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [score, setScore] = useState<{ earned: number; total: number } | null>(null)
   const [error, setError] = useState('')
   const [verifiedEmails, setVerifiedEmails] = useState<string[]>([])
   const [verificationSending, setVerificationSending] = useState(false)
+  const [checkingVerificationStatus, setCheckingVerificationStatus] = useState(false)
   const [verificationSent, setVerificationSent] = useState<Record<string, boolean>>({})
   const [newEmailInput, setNewEmailInput] = useState<Record<string, string>>({})
   const [currentPage, setCurrentPage] = useState(0)
@@ -205,41 +223,45 @@ export default function PublicForm({
   responsesRef.current = responses
 
   const hasPendingVerification = Object.values(verificationSent).some(Boolean)
+  // Referenced from the manual "check status" button (which needs a stable callback
+  // without adding `verificationSent` as a hook dependency it doesn't otherwise need).
+  const verificationSentRef = useRef(verificationSent)
+  verificationSentRef.current = verificationSent
+
+  const fetchVerifiedEmails = useCallback(async () => {
+    try {
+      const res = await fetch('/api/verify-email/account')
+      const data = await res.json()
+      if (data.verifiedEmails) {
+        setVerifiedEmails((prev) => {
+          const nextEmails = data.verifiedEmails as string[]
+          const hasNewEmails = nextEmails.some(
+            (email) => !prev.some((existing) => existing.toLowerCase().trim() === email.toLowerCase().trim())
+          )
+
+          if (hasNewEmails) {
+            const emailField = fields.find((field) => field.type === 'email' && field.requireVerifiedEmail)
+            if (emailField) {
+              const currentEmail = responsesRef.current[emailField.id] as string
+              const wasJustVerified = nextEmails.find(
+                (email) => email.toLowerCase().trim() === currentEmail?.toLowerCase().trim()
+              )
+              if (wasJustVerified && verificationSentRef.current[currentEmail]) {
+                setVerificationSent((current) => ({ ...current, [currentEmail]: false }))
+              }
+            }
+          }
+
+          return nextEmails
+        })
+      }
+    } catch (err) {
+      console.error('Failed to fetch verified emails:', err)
+    }
+  }, [fields])
 
   useEffect(() => {
     if (!hasVerifiedEmailField) return
-
-    const fetchVerifiedEmails = async () => {
-      try {
-        const res = await fetch('/api/verify-email/account')
-        const data = await res.json()
-        if (data.verifiedEmails) {
-          setVerifiedEmails((prev) => {
-            const nextEmails = data.verifiedEmails as string[]
-            const hasNewEmails = nextEmails.some(
-              (email) => !prev.some((existing) => existing.toLowerCase().trim() === email.toLowerCase().trim())
-            )
-
-            if (hasNewEmails) {
-              const emailField = fields.find((field) => field.type === 'email' && field.requireVerifiedEmail)
-              if (emailField) {
-                const currentEmail = responsesRef.current[emailField.id] as string
-                const wasJustVerified = nextEmails.find(
-                  (email) => email.toLowerCase().trim() === currentEmail?.toLowerCase().trim()
-                )
-                if (wasJustVerified && verificationSent[currentEmail]) {
-                  setVerificationSent((current) => ({ ...current, [currentEmail]: false }))
-                }
-              }
-            }
-
-            return nextEmails
-          })
-        }
-      } catch (err) {
-        console.error('Failed to fetch verified emails:', err)
-      }
-    }
 
     fetchVerifiedEmails()
 
@@ -247,7 +269,23 @@ export default function PublicForm({
       const interval = setInterval(fetchVerifiedEmails, 5000)
       return () => clearInterval(interval)
     }
-  }, [fields, hasVerifiedEmailField, hasPendingVerification, verificationSent])
+  }, [hasVerifiedEmailField, hasPendingVerification, fetchVerifiedEmails])
+
+  async function removeVerifiedEmail(email: string) {
+    try {
+      const res = await fetch('/api/verify-email/account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const data = await res.json()
+      if (res.ok && data.verifiedEmails) {
+        setVerifiedEmails(data.verifiedEmails)
+      }
+    } catch (err) {
+      console.error('Failed to remove verified email:', err)
+    }
+  }
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -507,7 +545,13 @@ export default function PublicForm({
         }
       }
 
-      const res = await fetch(`/api/submit/${publicId}`, {
+      const deviceMetadata = hasSignatureField || paymentSettings.paymentRequired ? collectDeviceMetadata() : null
+
+      const endpoint = paymentSettings.paymentRequired
+        ? `/api/submit/${publicId}/payment-intent`
+        : `/api/submit/${publicId}`
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -516,7 +560,7 @@ export default function PublicForm({
           responses,
           location: submissionLocation,
           uploadedAttachments,
-          deviceMetadata: hasSignatureField ? collectDeviceMetadata() : null,
+          deviceMetadata,
         }),
       })
 
@@ -540,6 +584,11 @@ export default function PublicForm({
         } else {
           setError(data.message || 'Failed to submit form. Please try again.')
         }
+        return
+      }
+
+      if (paymentSettings.paymentRequired) {
+        setPaymentIntentInfo({ clientSecret: data.clientSecret, connectedAccountId: data.connectedAccountId })
         return
       }
 
@@ -699,21 +748,32 @@ export default function PublicForm({
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">Select a verified email:</p>
                   {verifiedEmails.map((email) => (
-                    <label
+                    <div
                       key={email}
-                      className="flex cursor-pointer items-center gap-3 rounded-md border border-slate-200 p-3 hover:bg-slate-50"
+                      className="flex items-center justify-between gap-3 rounded-md border border-slate-200 p-3 hover:bg-slate-50"
                     >
-                      <input
-                        type="radio"
-                        name={`email-select-${field.id}`}
-                        value={email}
-                        checked={currentEmail === email}
-                        onChange={() => handleInputChange(field.id, email)}
-                        className="h-4 w-4"
-                      />
-                      <Check className="h-4 w-4 text-green-600" />
-                      <span>{email}</span>
-                    </label>
+                      <label className="flex flex-1 cursor-pointer items-center gap-3">
+                        <input
+                          type="radio"
+                          name={`email-select-${field.id}`}
+                          value={email}
+                          checked={currentEmail === email}
+                          onChange={() => handleInputChange(field.id, email)}
+                          className="h-4 w-4"
+                        />
+                        <Check className="h-4 w-4 text-green-600" />
+                        <span>{email}</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeVerifiedEmail(email)}
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        aria-label={`Remove verified email ${email}`}
+                        title="Remove verified email"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
                   ))}
                   <p className="mt-2 text-sm text-muted-foreground">Or add a new email:</p>
                 </div>
@@ -759,7 +819,24 @@ export default function PublicForm({
                       <Mail className="h-4 w-4" />
                       <span className="font-medium">Verification email sent</span>
                     </div>
-                    <p className="text-xs">Check your inbox and click the verification link. The page will update automatically.</p>
+                    <p className="text-xs">Click the link in your inbox to verify your email.</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      disabled={checkingVerificationStatus}
+                      onClick={async () => {
+                        setCheckingVerificationStatus(true)
+                        try {
+                          await fetchVerifiedEmails()
+                        } finally {
+                          setCheckingVerificationStatus(false)
+                        }
+                      }}
+                    >
+                      {checkingVerificationStatus ? 'Checking...' : 'Check verification status'}
+                    </Button>
                   </div>
                 ) : null}
 
@@ -1024,6 +1101,22 @@ export default function PublicForm({
             <h2 className="mb-2 text-2xl font-semibold">Form Closed</h2>
             <p className="text-muted-foreground">{closedReason}</p>
           </Card>
+        ) : paymentIntentInfo ? (
+          <StripePaymentStep
+            publicId={publicId}
+            clientSecret={paymentIntentInfo.clientSecret}
+            connectedAccountId={paymentIntentInfo.connectedAccountId}
+            onCancel={() => setPaymentIntentInfo(null)}
+            onSuccess={() => {
+              try {
+                localStorage.removeItem(storageKey)
+              } catch (err) {
+                console.error('Failed to clear saved responses:', err)
+              }
+              setPaymentIntentInfo(null)
+              setSubmitted(true)
+            }}
+          />
         ) : (
           <form onSubmit={handleSubmit}>
             <div className="space-y-4">
@@ -1065,6 +1158,24 @@ export default function PublicForm({
               </div>
             ) : null}
 
+            {paymentSettings.paymentRequired && paymentSettings.paymentAmountCents ? (
+              <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                <div className="flex items-start gap-2">
+                  <CreditCard className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>
+                    Payment of{' '}
+                    <span className="font-medium">
+                      {new Intl.NumberFormat('en-US', {
+                        style: 'currency',
+                        currency: paymentSettings.paymentCurrency,
+                      }).format(paymentSettings.paymentAmountCents / 100)}
+                    </span>{' '}
+                    is required before this form can be submitted.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-6 flex items-center justify-between">
               <div>
                 {currentPage > 0 ? (
@@ -1076,7 +1187,17 @@ export default function PublicForm({
               <div>
                 {isLastPage ? (
                   <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? (isRequestingLocation ? 'Checking location...' : isUploadingFiles ? 'Uploading files...' : 'Submitting...') : 'Submit'}
+                    {isSubmitting
+                      ? isRequestingLocation
+                        ? 'Checking location...'
+                        : isUploadingFiles
+                          ? 'Uploading files...'
+                          : paymentSettings.paymentRequired
+                            ? 'Preparing payment...'
+                            : 'Submitting...'
+                      : paymentSettings.paymentRequired
+                        ? 'Continue to Payment'
+                        : 'Submit'}
                   </Button>
                 ) : (
                   <Button type="button" onClick={handleNext}>

@@ -178,4 +178,21 @@ export function clearPendingSignupCookie(response: NextResponse) {
   })
 }
 
+// CSRF protection for the Stripe Connect OAuth flow: Stripe echoes the `state` param back
+// verbatim on the callback, so binding it to the initiating account id (no server-side storage
+// needed) is enough to confirm the callback belongs to the same signed-in session that started it.
+const STRIPE_CONNECT_STATE_LIFETIME_SECONDS = 60 * 10
+
+type StripeConnectStatePayload = { uid: string; exp: number }
+
+export function createStripeConnectStateToken(uid: string) {
+  const expiresAt = Math.floor((Date.now() + STRIPE_CONNECT_STATE_LIFETIME_SECONDS * 1000) / 1000)
+  return signToken({ uid, exp: expiresAt } satisfies StripeConnectStatePayload)
+}
+
+export function verifyStripeConnectStateToken(token: string, uid: string) {
+  const payload = verifyToken<StripeConnectStatePayload>(token)
+  return Boolean(payload?.uid && payload.uid === uid)
+}
+
 export { SESSION_COOKIE_NAME, PENDING_SIGNUP_COOKIE_NAME }

@@ -5,7 +5,6 @@ import { getOrCreateFormAccountId } from '@/lib/form-account'
 
 const resend = new Resend(process.env.RESEND_API_KEY || '')
 const FROM_EMAIL = process.env.EMAIL_FROM || 'Better Form <notifications@betterform.dev>'
-const APP_URL = process.env.APP_URL || 'http://localhost:3000'
 
 function sha256Hex(input: string) {
   return crypto.createHash('sha256').update(input).digest('hex')
@@ -90,8 +89,11 @@ export async function POST(request: NextRequest) {
       select: { name: true },
     })
 
-    // Send verification email
-    const verifyUrl = `${APP_URL}/api/verify-email/verify?token=${token}&formAccountId=${formAccountId}`
+    // Send verification email. Built from the request's own origin (not a static env var) so
+    // the link always points back to whichever deployment actually sent it — a hardcoded
+    // APP_URL silently breaks verification on any deployment/preview where it doesn't match
+    // (link points nowhere reachable, or worse, to a different environment/database).
+    const verifyUrl = `${request.nextUrl.origin}/api/verify-email/verify?token=${token}&formAccountId=${formAccountId}`
 
     await resend.emails.send({
       from: FROM_EMAIL,

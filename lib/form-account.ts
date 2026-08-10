@@ -13,10 +13,15 @@ export async function getFormAccountId(): Promise<string | null> {
   return cookieStore.get(FORM_ACCOUNT_COOKIE)?.value ?? null
 }
 
-async function createFormAccountRecord(formAccountId: string) {
+async function ensureFormAccountRecord(formAccountId: string) {
   const { default: prisma } = await import('@/lib/db')
-  await prisma.formAccountUUID.create({
-    data: {
+  // Upsert rather than a bare create: a cookie can outlive its DB row (a dev DB
+  // reset, a manual data-retention delete, testing against a different DATABASE_URL
+  // at some point, etc). Without this, every downstream lookup silently no-ops —
+  // verification emails "succeed" but never actually register as verified.
+  await prisma.formAccountUUID.upsert({
+    where: { id: formAccountId },
+    create: {
       id: formAccountId,
       ipAddresses: [],
       verifiedEmails: [],
@@ -24,6 +29,7 @@ async function createFormAccountRecord(formAccountId: string) {
       formsViewed: [],
       formsSubmitted: [],
     },
+    update: {},
   })
 }
 
@@ -43,9 +49,10 @@ export async function getOrCreateFormAccountId(): Promise<string> {
       sameSite: 'lax',
       path: '/',
     })
-
-    await createFormAccountRecord(formAccountId)
   }
+
+  // Always ensure the row exists, whether the cookie was just minted or already present.
+  await ensureFormAccountRecord(formAccountId)
 
   return formAccountId
 }
@@ -163,12 +170,23 @@ export async function updateFormAccountTracking(
  */
 export async function addVerifiedEmail(formAccountId: string, email: string) {
   const { default: prisma } = await import('@/lib/db')
-  
-  const account = await prisma.formAccountUUID.findUnique({
-    where: { id: formAccountId },
-  })
 
-  if (!account) return
+  // This is reached from the verify-link click, which carries `formAccountId` from the
+  // emailed URL rather than the current request's cookie — it never goes through
+  // `getOrCreateFormAccountId`'s row-repair, so it needs its own fallback here. Without
+  // this, a missing row means the click reports success but silently verifies nothing.
+  const account = await prisma.formAccountUUID.upsert({
+    where: { id: formAccountId },
+    create: {
+      id: formAccountId,
+      ipAddresses: [],
+      verifiedEmails: [],
+      verifiedPhones: [],
+      formsViewed: [],
+      formsSubmitted: [],
+    },
+    update: {},
+  })
 
   const emails = account.verifiedEmails || []
   if (!emails.includes(email)) {
@@ -177,6 +195,30 @@ export async function addVerifiedEmail(formAccountId: string, email: string) {
       data: {
         verifiedEmails: [...emails, email],
       },
+    })
+  }
+}
+
+/**
+ * Remove a verified email from a form account
+ */
+export async function removeVerifiedEmail(formAccountId: string, email: string) {
+  const { default: prisma } = await import('@/lib/db')
+
+  const account = await prisma.formAccountUUID.findUnique({
+    where: { id: formAccountId },
+  })
+
+  if (!account) return
+
+  const emails = account.verifiedEmails || []
+  const normalized = email.toLowerCase().trim()
+  const next = emails.filter((existing) => existing.toLowerCase().trim() !== normalized)
+
+  if (next.length !== emails.length) {
+    await prisma.formAccountUUID.update({
+      where: { id: formAccountId },
+      data: { verifiedEmails: next },
     })
   }
 }

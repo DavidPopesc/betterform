@@ -3,23 +3,30 @@ import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { getSessionUser } from "@/lib/auth-server"
 import PasskeysSettings from "@/components/account/PasskeysSettings"
+import StripeConnectSettings from "@/components/account/StripeConnectSettings"
 
 export default async function AccountSettingsPage() {
   const user = await getSessionUser()
   if (!user) return redirect("/login")
 
   const { default: prisma } = await import("@/lib/db")
-  const passkeys = await prisma.passkeyCredential.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      name: true,
-      credentialId: true,
-      transports: true,
-      createdAt: true,
-    },
-  })
+  const [passkeys, account] = await Promise.all([
+    prisma.passkeyCredential.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        credentialId: true,
+        transports: true,
+        createdAt: true,
+      },
+    }),
+    prisma.account.findUnique({
+      where: { id: user.id },
+      select: { stripeAccountId: true, stripeAccountOnboarded: true },
+    }),
+  ])
 
   return (
     <div className="min-h-svh p-8">
@@ -36,12 +43,22 @@ export default async function AccountSettingsPage() {
           <p className="text-sm text-muted-foreground">Signed in as {user.email}</p>
         </div>
 
-        <PasskeysSettings
-          initialPasskeys={passkeys.map((p) => ({
-            ...p,
-            createdAt: p.createdAt.toISOString(),
-          }))}
-        />
+        <div className="space-y-6">
+          <StripeConnectSettings
+            initialStatus={{
+              connected: Boolean(account?.stripeAccountId),
+              onboarded: Boolean(account?.stripeAccountOnboarded),
+              accountId: account?.stripeAccountId ?? null,
+            }}
+          />
+
+          <PasskeysSettings
+            initialPasskeys={passkeys.map((p) => ({
+              ...p,
+              createdAt: p.createdAt.toISOString(),
+            }))}
+          />
+        </div>
       </div>
     </div>
   )

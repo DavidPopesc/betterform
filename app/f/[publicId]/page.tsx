@@ -29,6 +29,7 @@ export default async function PublicFormPage({
       prefillValues={payload.prefill?.values}
       hiddenFieldIds={payload.prefill?.hiddenFieldIds}
       locationSettings={payload.locationSettings}
+      paymentSettings={payload.paymentSettings}
       allowAnotherResponse={payload.allowAnotherResponse}
     />
   )
