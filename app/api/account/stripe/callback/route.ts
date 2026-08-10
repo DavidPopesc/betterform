@@ -46,6 +46,15 @@ export async function GET(req: Request) {
       },
     })
 
+    try {
+      await stripe.paymentMethodDomains.create(
+        { domain_name: new URL(APP_URL).hostname },
+        { stripeAccount: stripeAccountId }
+      )
+    } catch (domainError) {
+      console.error("Stripe payment method domain registration error:", domainError)
+    }
+
     return NextResponse.redirect(`${APP_URL}/account?stripe=connected`)
   } catch (error) {
     console.error("Stripe Connect callback error:", error)
