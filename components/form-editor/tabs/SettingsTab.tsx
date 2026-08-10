@@ -407,7 +407,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
             setPaymentRequired(false)
           } else if (data.error === 'invalid_payment_amount') {
             // Amount is probably still mid-edit — leave the toggle on so the user can just fix the amount.
-            setPaymentSettingsMessage('Enter a payment amount greater than $0.')
+            setPaymentSettingsMessage('Enter a payment amount at least $0.50.')
           } else {
             setPaymentSettingsMessage('Could not save payment settings. Check the values and try again.')
           }
@@ -1098,7 +1098,7 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
                     <label className="mb-1 block text-xs text-muted-foreground">Amount</label>
                     <Input
                       type="number"
-                      min="0.01"
+                      min="0.50"
                       step="0.01"
                       value={paymentAmount}
                       onChange={(e) => setPaymentAmount(e.target.value)}
