@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSessionUser } from '@/lib/auth-server'
-import { parseFormSchema } from '@/lib/form-schema'
+import { parseFormSchema, ensureContractEmailField, releaseContractLockIfUnused } from '@/lib/form-schema'
 import crypto from 'crypto'
 
 export async function GET(
@@ -407,15 +407,16 @@ export async function POST(
         if (!account?.stripeAccountId || !account.stripeAccountOnboarded) {
           return NextResponse.json({ error: 'stripe_not_connected' }, { status: 400 })
         }
-
-        const schema = parseFormSchema(form.schema)
-        const hasVerifiedEmailField = schema.fields.some(
-          (field) => field.type === 'email' && field.requireVerifiedEmail
-        )
-        if (!hasVerifiedEmailField) {
-          return NextResponse.json({ error: 'missing_verified_email_field' }, { status: 400 })
-        }
       }
+
+      // A form that requires payment needs a required, verified email field to
+      // identify the payer — auto-add/lock it (mirrors the signature-field contract
+      // lock), and release the lock again once neither payment nor a signature needs it.
+      const schema = parseFormSchema(form.schema)
+      const updatedFields = paymentRequired
+        ? ensureContractEmailField(schema.fields)
+        : releaseContractLockIfUnused(schema.fields)
+      const schemaChanged = JSON.stringify(updatedFields) !== JSON.stringify(schema.fields)
 
       await prisma.form.update({
         where: { id: formId },
@@ -423,10 +424,18 @@ export async function POST(
           paymentRequired,
           paymentAmountCents,
           paymentCurrency,
+          ...(schemaChanged
+            ? { schema: { ...(form.schema as Record<string, unknown>), fields: updatedFields } }
+            : {}),
         },
       })
 
-      return NextResponse.json({ paymentRequired, paymentAmountCents, paymentCurrency })
+      return NextResponse.json({
+        paymentRequired,
+        paymentAmountCents,
+        paymentCurrency,
+        fields: schemaChanged ? updatedFields : undefined,
+      })
     }
 
     // Handle webhook URL

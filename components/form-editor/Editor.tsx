@@ -66,6 +66,14 @@ function ensureContractEmailField(fieldsList: Field[]): Field[] {
   return [emailField, ...fieldsList]
 }
 
+// Releases the contract lock on the email field once nothing on the form still needs it
+// (no signature field, and this is called only once payment no longer requires it either).
+function releaseContractLockIfUnused(fieldsList: Field[]): Field[] {
+  const hasSignature = fieldsList.some((f) => f.type === 'signature')
+  if (hasSignature) return fieldsList
+  return fieldsList.map((f) => (f.contractLocked ? { ...f, contractLocked: false } : f))
+}
+
 function normalizeScaleField(field: Field): Field {
   if (field.type === 'linear_scale') {
     return { ...field, type: 'scale', scaleStyle: 'numbers', scaleMax: 5 }
@@ -178,8 +186,9 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
   const [dropTarget, setDropTarget] = React.useState<number | null>(null)
   const [showImportModal, setShowImportModal] = React.useState(false)
   const [isQuiz, setIsQuiz] = React.useState(false)
+  const [paymentRequired, setPaymentRequired] = React.useState(false)
 
-  // Load quiz mode setting
+  // Load quiz mode + payment settings
   React.useEffect(() => {
     async function loadQuizMode() {
       try {
@@ -187,6 +196,7 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
         if (res.ok) {
           const data = await res.json()
           setIsQuiz(data.isQuiz || false)
+          setPaymentRequired(data.paymentRequired || false)
         }
       } catch (err) {
         console.error('Failed to load quiz mode:', err)
@@ -318,9 +328,8 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
     if (toDelete.contractLocked) return
     setFields((s) => {
       const next = s.filter((f) => f.id !== id)
-      if (toDelete.type === 'signature' && !next.some((f) => f.type === 'signature')) {
-        // no signature fields remain — release the lock on the email field
-        return next.map((f) => (f.contractLocked ? { ...f, contractLocked: false } : f))
+      if (toDelete.type === 'signature' && !paymentRequired) {
+        return releaseContractLockIfUnused(next)
       }
       return next
     })
@@ -450,6 +459,17 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
     if (newFields.length > 0) {
       setSelected(newFields[newFields.length - 1].id)
     }
+    setIsDirty(true)
+  }
+
+  // Mirrors the signature-field auto-add: when payment is toggled on/off in the
+  // Settings tab, immediately reflect the locked email field here too, no refresh needed.
+  function handlePaymentRequiredChange(next: boolean) {
+    setPaymentRequired(next)
+    setFields((s) => {
+      const updated = next ? ensureContractEmailField(s) : releaseContractLockIfUnused(s)
+      return updated.map((it, i) => ({ ...it, order: i }))
+    })
     setIsDirty(true)
   }
 
@@ -1151,7 +1171,7 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
                           </select>
                           {f.contractLocked && (
                             <p className="mt-1 max-w-40 text-xs text-muted-foreground">
-                              Required for contract signing.
+                              Required for signatures or payments.
                             </p>
                           )}
                         </div>
@@ -1335,7 +1355,7 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
       {activeTab === 'responses' && <ResponsesTab formId={formId} fields={fields} />}
       {activeTab === 'send' && <SendTab publicId={publicId} formId={formId} formName={formName} fields={fields} />}
       {activeTab === 'settings' && (
-        <SettingsTab formId={formId} theme={theme} onThemeChange={setTheme} onQuizModeChange={setIsQuiz} />
+        <SettingsTab formId={formId} theme={theme} onThemeChange={setTheme} onQuizModeChange={setIsQuiz} onPaymentRequiredChange={handlePaymentRequiredChange} />
       )}
       </div>
 

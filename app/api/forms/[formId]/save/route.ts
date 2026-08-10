@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSessionUser } from '@/lib/auth-server'
 import type { Prisma } from '@/lib/generated/prisma'
-import { parseFormSchema } from '@/lib/form-schema'
+import { parseFormSchema, ensureContractEmailField, releaseContractLockIfUnused } from '@/lib/form-schema'
 
 export async function POST(
   req: Request,
@@ -35,10 +35,20 @@ export async function POST(
     const name = body.name
 
     const existingSchema = parseFormSchema(form.schema)
+    const incomingFields = Array.isArray(schema?.fields) ? schema.fields : existingSchema.fields
+
+    // A required, verified email field can't be removed while a signature field or a
+    // payment requirement still depends on it — re-insert/lock it if the client tries to
+    // drop it, mirroring the same guard in the payment-settings route.
+    const needsLockedEmail = form.paymentRequired || incomingFields.some((f: { type: string }) => f.type === 'signature')
+    const guardedFields = needsLockedEmail
+      ? ensureContractEmailField(incomingFields)
+      : releaseContractLockIfUnused(incomingFields)
+
     const nextSchema = {
       ...existingSchema,
       ...(typeof schema === 'object' && schema !== null ? schema : {}),
-      fields: Array.isArray(schema?.fields) ? schema.fields : existingSchema.fields,
+      fields: guardedFields,
     }
 
     const data: { schema: Prisma.InputJsonValue; name?: string } = { schema: nextSchema as Prisma.InputJsonValue }

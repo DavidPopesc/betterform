@@ -76,6 +76,41 @@ export function parseFormSchema(input: unknown): FormSchema {
   }
 }
 
+// Ensures a form has a required, verified email field — reuses an existing `email`
+// field if present, otherwise inserts one at the top of the list. Mirrors the
+// signature-field contract lock in the Editor (components/form-editor/Editor.tsx).
+export function ensureContractEmailField(fields: FormField[]): FormField[] {
+  const existingEmailIdx = fields.findIndex((f) => f.type === 'email')
+  if (existingEmailIdx !== -1) {
+    const next = [...fields]
+    next[existingEmailIdx] = {
+      ...next[existingEmailIdx],
+      required: true,
+      requireVerifiedEmail: true,
+      contractLocked: true,
+    }
+    return next
+  }
+  const emailField: FormField = {
+    id: `field_${Math.random().toString(36).slice(2, 9)}`,
+    type: 'email',
+    label: 'Email address',
+    description: '',
+    required: true,
+    requireVerifiedEmail: true,
+    contractLocked: true,
+  }
+  return [emailField, ...fields]
+}
+
+// Releases the contract lock on the verified email field once nothing on the form
+// still requires it (no signature field, no payment requirement).
+export function releaseContractLockIfUnused(fields: FormField[]): FormField[] {
+  const hasSignature = fields.some((f) => f.type === 'signature')
+  if (hasSignature) return fields
+  return fields.map((f) => (f.contractLocked ? { ...f, contractLocked: false } : f))
+}
+
 export function withUpdatedSchema(input: unknown, updates: Partial<FormSchema>) {
   const schema = parseFormSchema(input)
   return {
