@@ -12,6 +12,7 @@ interface SettingsTabProps {
   theme: string
   onThemeChange: (theme: string) => void
   onQuizModeChange?: (isQuiz: boolean) => void
+  onPaymentRequiredChange?: (paymentRequired: boolean) => void
 }
 
 type LimitedPublicView = {
@@ -45,7 +46,7 @@ const THEMES = [
   { id: 'pink', label: 'Pink', color: 'bg-pink-500' },
 ]
 
-export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeChange }: SettingsTabProps) {
+export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeChange, onPaymentRequiredChange }: SettingsTabProps) {
   const [publicId, setPublicId] = useState<string>('')
   const [formFields, setFormFields] = useState<Array<{ id: string; label: string; type: string; options?: Array<{ id: string; label: string }>; requireVerifiedEmail?: boolean }>>([])
   const [views, setViews] = useState<LimitedPublicView[]>([])
@@ -90,6 +91,10 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
   const paymentSettingsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const didLoadLocationSettingsRef = useRef(false)
   const didLoadPaymentSettingsRef = useRef(false)
+  const onPaymentRequiredChangeRef = useRef(onPaymentRequiredChange)
+  useEffect(() => {
+    onPaymentRequiredChangeRef.current = onPaymentRequiredChange
+  }, [onPaymentRequiredChange])
   const hasVerifiedEmailField = formFields.some((field) => field.type === 'email' && field.requireVerifiedEmail)
   const deadlineDate = responseDeadline ? responseDeadline.slice(0, 10) : ''
   const deadlineTime = responseDeadline ? responseDeadline.slice(11, 16) : ''
@@ -402,9 +407,6 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
           if (data.error === 'stripe_not_connected') {
             setPaymentSettingsMessage('Connect a Stripe account in Account settings before requiring payment.')
             setPaymentRequired(false)
-          } else if (data.error === 'missing_verified_email_field') {
-            setPaymentSettingsMessage('Add a required, verified email field to this form before requiring payment.')
-            setPaymentRequired(false)
           } else if (data.error === 'invalid_payment_amount') {
             // Amount is probably still mid-edit — leave the toggle on so the user can just fix the amount.
             setPaymentSettingsMessage('Enter a payment amount at least $0.50.')
@@ -422,6 +424,16 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
             : ''
         )
         setPaymentCurrency(data.paymentCurrency || 'usd')
+        if (Array.isArray(data.fields)) {
+          setFormFields(data.fields.map((f: { id: string; label: string; type: string; options?: Array<{ id: string; label: string }>; requireVerifiedEmail?: boolean }) => ({
+            id: f.id,
+            label: f.label || 'Untitled',
+            type: f.type,
+            options: f.options || [],
+            requireVerifiedEmail: f.requireVerifiedEmail || false,
+          })))
+        }
+        onPaymentRequiredChangeRef.current?.(Boolean(data.paymentRequired))
         setPaymentSettingsMessage('Payment settings saved.')
       } catch (err) {
         console.error('Failed to save payment settings:', err)
@@ -1078,17 +1090,17 @@ export default function SettingsTab({ formId, theme, onThemeChange, onQuizModeCh
                   type="checkbox"
                   checked={paymentRequired}
                   onChange={() => setPaymentRequired((current) => !current)}
-                  disabled={saving || !hasVerifiedEmailField}
+                  disabled={saving}
                   className="w-10 h-5 appearance-none bg-slate-200 rounded-full relative cursor-pointer transition checked:bg-primary
                     before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-4 before:h-4 before:bg-white before:rounded-full before:transition-transform
                     checked:before:translate-x-5 disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </label>
 
-              {!hasVerifiedEmailField ? (
-                <p className="text-xs text-amber-600 -mt-2">
-                  Add a required, verified email field to this form (in the Questions tab) before you can
-                  require payment.
+              {paymentRequired && !hasVerifiedEmailField ? (
+                <p className="text-xs text-muted-foreground -mt-2">
+                  A required, verified email field was added to this form (in the Questions tab) to identify
+                  who paid.
                 </p>
               ) : null}
 
