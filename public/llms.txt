@@ -1,0 +1,102 @@
+# Better Form
+
+> Better Form (https://betterform.dev) is a form builder for clubs, events and projects: sign-ups, RSVPs, applications, surveys, quizzes, waivers and signed contracts. AI agents can create a form for a user with one HTTP request. No account or API key is needed.
+
+## Create a form for a user
+
+1. Build the form definition (schema below).
+2. `POST https://betterform.dev/api/agent/forms` with `Content-Type: application/json`.
+3. Give the user the `claimUrl` from the response. That is the main deliverable.
+
+The user opens the `claimUrl`, sees a preview, and clicks "Add to my account" (signing up first if they need to). The form is then theirs to edit and share. **The form does not accept responses until it has been claimed.** Unclaimed forms are deleted after 14 days.
+
+Treat `claimUrl` as private to the user who asked: anyone who opens it can claim the form. If the user wants something to show others before claiming, give them `previewUrl`, which is read-only.
+
+### Example
+
+```bash
+curl -X POST https://betterform.dev/api/agent/forms \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Robotics Club Fall Sign-up",
+    "theme": "blue",
+    "successMessage": "Thanks! See you at the first meeting.",
+    "fields": [
+      { "type": "text", "label": "Welcome!", "description": "Meetings are Tuesdays at 4pm in Room 204." },
+      { "type": "short_text", "label": "Full name", "required": true },
+      { "type": "email", "label": "Email", "required": true },
+      { "type": "dropdown", "label": "Grade", "options": ["9", "10", "11", "12"], "required": true },
+      { "type": "checkboxes", "label": "Which teams interest you?", "options": ["Build", "Programming", "Design", "Outreach"] },
+      { "type": "scale", "label": "Prior robotics experience", "scaleStyle": "numbers", "scaleMax": 5 },
+      { "type": "paragraph", "label": "Anything else we should know?" }
+    ]
+  }'
+```
+
+Response (`201`):
+
+```json
+{
+  "formId": "…",
+  "name": "Robotics Club Fall Sign-up",
+  "fields": [ … ],
+  "previewUrl": "https://betterform.dev/preview/…",
+  "claimUrl": "https://betterform.dev/claim/bf_claim_…",
+  "editToken": "bf_edit_…",
+  "expiresAt": "2026-10-30T12:00:00.000Z",
+  "instructions": "…"
+}
+```
+
+Suggested reply to the user: "Here's your form: {claimUrl}. Open it to preview it, then click **Add to my account** to edit it and get a link to share."
+
+## Form definition
+
+| Key | Type | Notes |
+|---|---|---|
+| `name` | string, required | Form title, at most 200 characters. |
+| `fields` | array, required | 1–100 fields, shown in order. |
+| `theme` | string | `slate`, `blue` (default), `green`, `purple` or `pink`. |
+| `successMessage` | string | Shown after someone submits, at most 500 characters. |
+
+Every field has `type` and `label`, plus optional `description` (help text) and `required` (boolean). `id` is optional: omit it and one is generated.
+
+| `type` | Use for | Extra keys |
+|---|---|---|
+| `short_text` | Names, one-line answers | |
+| `paragraph` | Long answers | |
+| `email` | Email address | |
+| `phone` | Phone number | |
+| `multiple_choice` | Pick one (radio buttons) | `options`: array of strings, required |
+| `dropdown` | Pick one from a long list | `options`: array of strings, required |
+| `checkboxes` | Pick any number | `options`: array of strings, required |
+| `date` | A date | |
+| `time` | A time | |
+| `scale` | Ratings | `scaleStyle`: `numbers` (default), `stars` or `faces`; `scaleMax`: 2–5 (default 5) |
+| `file_upload` | Files | `maxFiles`: 1–10 (default 1); `allowedFileTypes`: e.g. `["image/*", ".pdf"]` |
+| `text` | Static heading and paragraph, no input | `label` is the heading (may be empty), `description` is the body |
+| `section` | Page break; later fields go on the next page | `label` optional |
+| `legal_text` | Contract or waiver terms shown in a scroll box | `content`: required, the full text |
+| `signature` | Signature, for waivers and contracts | `signatureMode`: `draw`, `type` or `either` (default) |
+
+Adding a `signature` field automatically adds a required, verified email field if the form doesn't already have one.
+
+Payments, quizzes, response limits, deadlines and notification settings are not available through this API. Tell the user they can turn them on in the editor after claiming the form.
+
+## Revise a form before it's claimed
+
+Send the complete updated definition (same shape as create). It replaces the previous version. The `claimUrl` stays the same.
+
+```
+PATCH https://betterform.dev/api/agent/forms/{formId}
+Authorization: Bearer {editToken}
+Content-Type: application/json
+```
+
+`GET` on the same URL with the same header returns the current definition. Once the user claims the form, the `editToken` stops working (`404`), and only the owner can change the form in the Better Form editor.
+
+## Errors
+
+- `422 validation_failed`: `issues` lists each problem as `{ "path": "fields[2].options", "message": "…" }`. Fix those paths and retry.
+- `429 rate_limited`: too many forms created from this network in the last hour. Revise an existing form with its `editToken` instead.
+- `404 not_found` on PATCH or GET: wrong id or token, or the form was already claimed or expired.

@@ -58,6 +58,11 @@ export async function POST(
       return NextResponse.json({ error: 'form_not_found' }, { status: 404 })
     }
 
+    // Unclaimed agent-created forms are preview-only until someone adds them to an account.
+    if (!form.account) {
+      return NextResponse.json({ error: 'form_closed', message: 'This form is not accepting responses.' }, { status: 403 })
+    }
+
     if (!form.paymentRequired) {
       return NextResponse.json({ error: 'payment_not_required' }, { status: 400 })
     }

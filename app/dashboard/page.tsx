@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation"
+import { cookies } from "next/headers"
 import Image from "next/image"
 import Link from "next/link"
 import { Settings } from "lucide-react"
@@ -7,10 +8,14 @@ import SignOutButton from '@/components/sign-out-button'
 import { Button } from '@/components/ui/button'
 import { getSessionUser } from '@/lib/auth-server'
 import DashboardClient from '@/components/dashboard-client'
+import { readPendingClaimTokens } from '@/lib/agent-forms'
 
 export default async function DashboardPage() {
   const user = await getSessionUser()
   if (!user) return redirect("/login")
+
+  // Finish adding agent-created forms the user started claiming before logging in.
+  if (readPendingClaimTokens(await cookies()).length > 0) return redirect("/api/claim/complete")
 
   const { default: prisma } = await import('@/lib/db')
   const forms = await prisma.form.findMany({ where: { accountId: user.id }, orderBy: { updatedAt: 'desc' }, take: 24 })

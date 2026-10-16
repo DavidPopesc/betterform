@@ -70,8 +70,9 @@ model Account {
 model Form {
   id        String      @id @default(uuid())
   publicId  String      @unique @default(uuid()) // public sharing ID, different from internal ID
-  accountId String
-  account   Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // null while an agent-created form is waiting to be claimed (see lib/agent-forms.ts)
+  accountId String?
+  account   Account?    @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name      String?
 
   // full schema for the form (Values.json-like structure)
@@ -113,6 +114,15 @@ model Form {
   dataApiKey       String? @unique
   webhookUrl String?
 
+  // Agent-created forms: unowned until a user claims them via the claim link.
+  // Tokens are stored as SHA-256 hashes; both are cleared on claim.
+  createdByAgent Boolean   @default(false)
+  claimTokenHash String?   @unique
+  editTokenHash  String?   @unique
+  claimExpiresAt DateTime?
+  claimedAt      DateTime?
+  creatorIpHash  String?
+
   // optional normalized field rows for queries / admin tooling
   fields    FormField[]
   responses Response[]
@@ -122,6 +132,9 @@ model Form {
 
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+
+  @@index([claimExpiresAt])
+  @@index([creatorIpHash, createdAt])
 }
 
 model FormField {
