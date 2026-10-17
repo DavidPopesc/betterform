@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import type { NextResponse } from 'next/server'
+import type { Prisma } from '@/lib/generated/prisma'
 import type { FormField } from '@/lib/form-schema'
 import { ensureContractEmailField } from '@/lib/form-schema'
 import { sha256Hex } from '@/lib/session'
@@ -274,6 +275,132 @@ export function parseAgentFormInput(body: unknown): Result<AgentFormInput> {
       fields: guardedFields,
     },
   }
+}
+
+// ---------------------------------------------------------------------------
+// Create / read / update (shared by the HTTP API and the MCP server)
+// ---------------------------------------------------------------------------
+
+export type AgentFormError = {
+  ok: false
+  status: number
+  error: 'validation_failed' | 'rate_limited' | 'not_found'
+  message: string
+  issues?: ValidationIssue[]
+}
+
+const DOCS_URL = 'https://betterform.dev/llms.txt'
+
+function validationError(issues: ValidationIssue[]): AgentFormError {
+  return {
+    ok: false,
+    status: 422,
+    error: 'validation_failed',
+    message: `The form definition is invalid. Fix these and retry: ${issues.map((i) => `${i.path || '(body)'} ${i.message}`).join('; ')}. Docs: ${DOCS_URL}`,
+    issues,
+  }
+}
+
+export const CLAIM_INSTRUCTIONS =
+  'Give the user the claimUrl. Opening it shows a preview and lets them add the form to their Better Form account ' +
+  '(signing up if needed); the form only accepts responses after that. Keep claimUrl private — anyone with it can claim the form. ' +
+  'To revise the form before it is claimed, send the full updated definition with the formId and editToken.'
+
+export async function createAgentForm(body: unknown, clientIp: string) {
+  const parsed = parseAgentFormInput(body)
+  if (!parsed.ok) return validationError(parsed.errors)
+
+  const { default: prisma } = await import('@/lib/db')
+
+  const creatorIpHash = hashIp(clientIp)
+  const recentCount = await prisma.form.count({
+    where: { creatorIpHash, createdAt: { gt: new Date(Date.now() - 60 * 60 * 1000) } },
+  })
+  if (recentCount >= AGENT_CREATE_LIMIT_PER_HOUR) {
+    return {
+      ok: false,
+      status: 429,
+      error: 'rate_limited',
+      message: `At most ${AGENT_CREATE_LIMIT_PER_HOUR} forms per hour. Update an existing form with its editToken instead.`,
+    } satisfies AgentFormError
+  }
+
+  const claimToken = generateToken('bf_claim')
+  const editToken = generateToken('bf_edit')
+  const { name, theme, successMessage, fields } = parsed.value
+
+  const form = await prisma.form.create({
+    data: {
+      accountId: null,
+      name,
+      theme,
+      ...(successMessage ? { successMessage } : {}),
+      schema: { fields } as unknown as Prisma.InputJsonValue,
+      responsesEnabled: false,
+      notifyOnFormSubmission: true,
+      createdByAgent: true,
+      claimTokenHash: hashToken(claimToken),
+      editTokenHash: hashToken(editToken),
+      claimExpiresAt: new Date(Date.now() + CLAIM_TTL_DAYS * 24 * 60 * 60 * 1000),
+      creatorIpHash,
+    },
+  })
+
+  return {
+    ok: true as const,
+    form: {
+      ...serializeAgentForm(form),
+      claimUrl: claimUrlFor(claimToken),
+      editToken,
+      instructions: CLAIM_INSTRUCTIONS,
+    },
+  }
+}
+
+async function findEditableAgentForm(formId: string, editToken: string) {
+  const { default: prisma } = await import('@/lib/db')
+  // editTokenHash is cleared on claim, so a claimed form never matches here.
+  const form = await prisma.form.findUnique({ where: { editTokenHash: hashToken(editToken) } })
+  if (!form || form.id !== formId || form.accountId !== null) return null
+  if (form.claimExpiresAt && form.claimExpiresAt < new Date()) return null
+  return form
+}
+
+const notFoundError: AgentFormError = {
+  ok: false,
+  status: 404,
+  error: 'not_found',
+  message:
+    'No editable form matches this formId and editToken. It may have been claimed (only the owner can edit it now) or expired.',
+}
+
+export async function getAgentForm(formId: string, editToken: string) {
+  const form = await findEditableAgentForm(formId, editToken)
+  if (!form) return notFoundError
+  return { ok: true as const, form: serializeAgentForm(form) }
+}
+
+// Full replacement: the body is a complete form definition, same shape as create.
+export async function updateAgentForm(formId: string, editToken: string, body: unknown) {
+  const form = await findEditableAgentForm(formId, editToken)
+  if (!form) return notFoundError
+
+  const parsed = parseAgentFormInput(body)
+  if (!parsed.ok) return validationError(parsed.errors)
+
+  const { name, theme, successMessage, fields } = parsed.value
+  const { default: prisma } = await import('@/lib/db')
+  const updated = await prisma.form.update({
+    where: { id: form.id },
+    data: {
+      name,
+      theme,
+      ...(successMessage ? { successMessage } : {}),
+      schema: { fields } as unknown as Prisma.InputJsonValue,
+    },
+  })
+
+  return { ok: true as const, form: serializeAgentForm(updated) }
 }
 
 // ---------------------------------------------------------------------------
