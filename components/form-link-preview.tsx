@@ -98,27 +98,28 @@ export default function FormLinkPreview({ loggedIn }: { loggedIn: boolean }) {
         theme: state.form.theme,
         successMessage: state.form.successMessage ?? 'Your response has been recorded.',
       }}
-      banner={
-        <div className="flex flex-col gap-3 sm:items-end">
-          <p className="text-sm text-slate-600">
-            This form was made for you. Add it to your account to edit it and start collecting responses.
-          </p>
-          {loggedIn ? (
-            <Button disabled={submitting} onClick={() => addToAccount('signup')}>
-              {submitting ? 'Adding…' : 'Add to my account'}
+      message={
+        error ? (
+          <span className="text-red-600">{error}</span>
+        ) : (
+          'Made for you. Add it to your account to edit it and start collecting responses.'
+        )
+      }
+      actions={
+        loggedIn ? (
+          <Button disabled={submitting} onClick={() => addToAccount('signup')}>
+            {submitting ? 'Adding…' : 'Add to my account'}
+          </Button>
+        ) : (
+          <>
+            <Button variant="outline" disabled={submitting} onClick={() => addToAccount('login')}>
+              Log in
             </Button>
-          ) : (
-            <div className="flex gap-2">
-              <Button variant="outline" disabled={submitting} onClick={() => addToAccount('login')}>
-                Log in
-              </Button>
-              <Button disabled={submitting} onClick={() => addToAccount('signup')}>
-                Sign up to add this form
-              </Button>
-            </div>
-          )}
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        </div>
+            <Button disabled={submitting} onClick={() => addToAccount('signup')}>
+              Sign up to add this form
+            </Button>
+          </>
+        )
       }
     />
   )

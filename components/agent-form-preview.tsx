@@ -16,18 +16,20 @@ type PreviewForm = {
 
 // Shared shell for the claim page and the shareable preview of an agent-created form:
 // a Better Form banner with page-specific actions, followed by the form in preview mode.
-export function AgentFormPreview({ form, banner }: { form: PreviewForm; banner: ReactNode }) {
+export function AgentFormPreview({ form, message, actions }: { form: PreviewForm; message: ReactNode; actions?: ReactNode }) {
   const { fields } = parseFormSchema(form.schema)
 
   return (
     <div className="min-h-svh">
-      <div className="border-b bg-white">
-        <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+      {/* Same width as the form below (PublicForm uses max-w-2xl inside px-4) so the edges line up. */}
+      <div className="border-b bg-white px-4">
+        <div className="mx-auto flex max-w-2xl flex-col gap-3 py-4 sm:flex-row sm:items-center sm:gap-6">
           <Link href="/" className="flex shrink-0 items-center gap-2 text-sm font-semibold text-slate-900">
             <Image src="/betterformlogo.png" width={24} height={24} alt="Better Form logo" />
             Better Form
           </Link>
-          {banner}
+          <div className="text-sm text-slate-600 sm:flex-1">{message}</div>
+          {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
         </div>
       </div>
       <PublicForm

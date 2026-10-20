@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -6,6 +7,16 @@ import { ArrowRight, Check, Shield, Workflow } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { getSessionUser } from '@/lib/auth-server'
+
+// The description and the llms.txt link are what AI assistants see when they search for or
+// open the site, so they say up front that an assistant can build a form here.
+export const metadata: Metadata = {
+  metadataBase: new URL('https://www.betterform.dev'),
+  description:
+    'Forms for clubs, events and projects: sign-ups, RSVPs, applications, waivers and contracts. ' +
+    'AI assistants can build a Better Form for you; instructions at https://www.betterform.dev/llms.txt',
+  alternates: { types: { 'text/markdown': '/llms.txt' } },
+}
 
 export default async function Home() {
   const user = await getSessionUser()
@@ -94,6 +105,13 @@ export default async function Home() {
           </Card>
         </div>
       </main>
+      <footer className="pb-6 text-center text-xs text-slate-500">
+        Using an AI assistant? Ask it to read{' '}
+        <a href="/llms.txt" className="underline underline-offset-2 hover:text-slate-700">
+          betterform.dev/llms.txt
+        </a>{' '}
+        and it can build your form for you.
+      </footer>
     </div>
   )
 }
