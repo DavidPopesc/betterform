@@ -59,6 +59,8 @@ interface PublicFormProps {
   successMessage?: string
   prefillValues?: Record<string, unknown>
   hiddenFieldIds?: string[]
+  // Unique link this form was opened through; sent with the submission so the response records it.
+  formLinkId?: string
   allowAnotherResponse?: boolean
   locationSettings?: {
     requireLocationOnSubmit: boolean
@@ -150,6 +152,7 @@ export default function PublicForm({
   successMessage = 'Your response has been recorded.',
   prefillValues = {},
   hiddenFieldIds = [],
+  formLinkId,
   allowAnotherResponse = false,
   locationSettings = {
     requireLocationOnSubmit: false,
@@ -569,6 +572,7 @@ export default function PublicForm({
           location: submissionLocation,
           uploadedAttachments,
           deviceMetadata,
+          formLinkId,
         }),
       })
 

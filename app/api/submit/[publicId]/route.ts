@@ -10,6 +10,7 @@ import {
 } from '@/lib/form-account'
 import { validateSubmissionPreconditions, buildContractFields, createFormResponse, type UploadedAttachmentInput } from '@/lib/submission'
 import { finalizePendingSubmission } from '@/lib/pending-submission'
+import { applyLinkToResponses, linkResponseFields, resolveSubmissionLink } from '@/lib/form-links'
 
 export async function POST(
   req: Request,
@@ -117,6 +118,7 @@ export async function POST(
     let responses: Record<string, unknown>
     let submissionLocation: ReturnType<typeof parseSubmissionLocation> = null
     let clientDeviceMetadata: Record<string, unknown> | null = null
+    let rawLinkId: unknown = null
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await req.formData()
@@ -136,6 +138,7 @@ export async function POST(
       clientDeviceMetadata = typeof formData.get('deviceMetadata') === 'string'
         ? JSON.parse(String(formData.get('deviceMetadata')))
         : null
+      rawLinkId = formData.get('formLinkId')
     } else {
       const body = await req.json()
       responses = body.responses as Record<string, unknown>
@@ -146,11 +149,18 @@ export async function POST(
           : {}
       clientDeviceMetadata =
         typeof body.deviceMetadata === 'object' && body.deviceMetadata !== null ? body.deviceMetadata : null
+      rawLinkId = body.formLinkId
     }
 
     if (!responses || typeof responses !== 'object') {
       return NextResponse.json({ error: 'invalid_response_data' }, { status: 400 })
     }
+
+    const linkCheck = await resolveSubmissionLink(form.id, rawLinkId)
+    if (!linkCheck.ok) {
+      return NextResponse.json({ error: linkCheck.error, message: linkCheck.message }, { status: linkCheck.status })
+    }
+    responses = applyLinkToResponses(responses, linkCheck.link)
 
     const uploadedBlobUrls = Object.values(uploadedAttachmentsByField)
       .flat()
@@ -255,7 +265,7 @@ export async function POST(
       submissionLocation,
       uploadedAttachmentsByField,
       isContractForm,
-      extraFields: contractFields,
+      extraFields: { ...contractFields, ...linkResponseFields(linkCheck.link) },
     })
 
     // Track submission in form account (for non-API requests)

@@ -123,6 +123,9 @@ model Form {
   claimedAt      DateTime?
   creatorIpHash  String?
 
+  links         FormLink[]
+  editProposals FormEditProposal[]
+
   // optional normalized field rows for queries / admin tooling
   fields    FormField[]
   responses Response[]
@@ -135,6 +138,37 @@ model Form {
 
   @@index([claimExpiresAt])
   @@index([creatorIpHash, createdAt])
+}
+
+// A unique link to a form (/f/{id}). Can prefill answers, hide prefilled questions (their values
+// are enforced on submit), and expire. Responses record which link they came through.
+model FormLink {
+  id             String     @id @default(uuid())
+  formId         String
+  form           Form       @relation(fields: [formId], references: [id], onDelete: Cascade)
+  label          String
+  values         Json       @default("{}")
+  hiddenFieldIds Json       @default("[]")
+  expiresAt      DateTime?
+  createdAt      DateTime   @default(now())
+  responses      Response[]
+
+  @@index([formId])
+}
+
+// A change to a claimed form proposed by an AI, waiting for the owner to apply or dismiss it
+// from the editor. At most one is pending per form; a newer proposal supersedes the older one.
+model FormEditProposal {
+  id         String    @id @default(uuid())
+  formId     String
+  form       Form      @relation(fields: [formId], references: [id], onDelete: Cascade)
+  source     String    // agent (edit token) | link (owner opened an /edit link)
+  definition Json      // { name, theme, successMessage?, fields }
+  status     String    @default("pending") // pending | applied | dismissed | superseded
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([formId, status])
 }
 
 model FormField {
@@ -165,6 +199,9 @@ model Response {
   respondentHash String?     // app-level hashed identifier (HMAC)
   respondentEmail String?    // for quick lookup/indexing
   formAccountId  String?     // tracks which form account submitted this
+  formLinkId     String?
+  formLink       FormLink?   @relation(fields: [formLinkId], references: [id], onDelete: SetNull)
+  formLinkLabel  String?     // label of the unique link at submit time, kept if the link is deleted
   submissionLocation Json?
 
   // Contract signing audit trail (populated when the form contains a `signature` field)
@@ -203,6 +240,7 @@ model PendingSubmission {
   respondentEmail       String?
   respondentIp          String?
   formAccountId         String?
+  formLinkId            String?
   status                String   @default("pending") // pending | completed | expired
   responseId            String?  // set once finalized, so retries/webhook races can return it instead of recreating
   createdAt             DateTime @default(now())

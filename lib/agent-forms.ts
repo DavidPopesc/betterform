@@ -12,7 +12,8 @@ import { sha256Hex } from '@/lib/session'
 //   - previewUrl: safe to share, shows a read-only preview
 //   - claimUrl:   secret, lets whoever opens it add the form to their account
 //   - editToken:  secret, lets the agent keep revising the form until it's claimed
-// Claiming assigns the owner, clears both tokens and turns responses on.
+// Claiming assigns the owner, clears the claim token and turns responses on. The edit token keeps
+// working afterwards, but only to propose changes the owner approves (see lib/form-proposals.ts).
 
 export const CLAIM_TTL_DAYS = 14
 export const AGENT_CREATE_LIMIT_PER_HOUR = 20
@@ -358,12 +359,12 @@ export async function createAgentForm(body: unknown, clientIp: string) {
   }
 }
 
-async function findEditableAgentForm(formId: string, editToken: string) {
+async function findAgentForm(formId: string, editToken: string) {
   const { default: prisma } = await import('@/lib/db')
-  // editTokenHash is cleared on claim, so a claimed form never matches here.
   const form = await prisma.form.findUnique({ where: { editTokenHash: hashToken(editToken) } })
-  if (!form || form.id !== formId || form.accountId !== null) return null
-  if (form.claimExpiresAt && form.claimExpiresAt < new Date()) return null
+  if (!form || form.id !== formId) return null
+  // Unclaimed forms expire; once claimed, the token stays valid but can only propose changes.
+  if (form.accountId === null && form.claimExpiresAt && form.claimExpiresAt < new Date()) return null
   return form
 }
 
@@ -371,20 +372,62 @@ const notFoundError: AgentFormError = {
   ok: false,
   status: 404,
   error: 'not_found',
-  message:
-    'No editable form matches this formId and editToken. It may have been claimed (only the owner can edit it now) or expired.',
+  message: 'No form matches this formId and editToken. It may have expired before anyone claimed it, or been deleted.',
 }
+
+export const PROPOSAL_INSTRUCTIONS =
+  'This form belongs to the user now, so your changes were sent to them for approval instead of being applied. ' +
+  'Tell them to open the form in the Better Form editor, where a banner lets them apply your changes or keep the current version. ' +
+  'Sending another update replaces this proposal.'
 
 export async function getAgentForm(formId: string, editToken: string) {
-  const form = await findEditableAgentForm(formId, editToken)
+  const form = await findAgentForm(formId, editToken)
   if (!form) return notFoundError
-  return { ok: true as const, form: serializeAgentForm(form) }
+
+  if (form.accountId === null) return { ok: true as const, form: serializeAgentForm(form) }
+
+  const { default: prisma } = await import('@/lib/db')
+  const pending = await prisma.formEditProposal.findFirst({
+    where: { formId: form.id, status: 'pending' },
+    select: { id: true, createdAt: true },
+  })
+  return {
+    ok: true as const,
+    form: {
+      ...serializeAgentForm(form),
+      claimed: true,
+      editorUrl: `${getAppUrl()}/forms/${form.id}/edit`,
+      pendingProposal: pending ? { proposalId: pending.id, createdAt: pending.createdAt.toISOString() } : null,
+      instructions:
+        'This form has been claimed. Updates are sent to the owner for approval. Keep each field\'s "id" when you send ' +
+        'an update so existing responses stay attached to their questions.',
+    },
+  }
 }
 
-// Full replacement: the body is a complete form definition, same shape as create.
+// Full replacement: the body is a complete form definition, same shape as create. Unclaimed forms
+// change immediately; claimed forms get a proposal the owner applies or dismisses in the editor.
 export async function updateAgentForm(formId: string, editToken: string, body: unknown) {
-  const form = await findEditableAgentForm(formId, editToken)
+  const form = await findAgentForm(formId, editToken)
   if (!form) return notFoundError
+
+  if (form.accountId !== null) {
+    const { createProposal } = await import('@/lib/form-proposals')
+    const result = await createProposal(form, body, 'agent')
+    if (!result.ok) return validationError(result.errors)
+    return {
+      ok: true as const,
+      status: 202,
+      form: {
+        ...serializeAgentForm(form),
+        claimed: true,
+        proposalId: result.proposal.id,
+        status: 'pending_owner_approval',
+        editorUrl: `${getAppUrl()}/forms/${form.id}/edit`,
+        instructions: PROPOSAL_INSTRUCTIONS,
+      },
+    }
+  }
 
   const parsed = parseAgentFormInput(body)
   if (!parsed.ok) return validationError(parsed.errors)
@@ -401,7 +444,7 @@ export async function updateAgentForm(formId: string, editToken: string, body: u
     },
   })
 
-  return { ok: true as const, form: serializeAgentForm(updated) }
+  return { ok: true as const, status: 200, form: serializeAgentForm(updated) }
 }
 
 // ---------------------------------------------------------------------------
@@ -433,8 +476,8 @@ export async function claimFormsForAccount(accountId: string, tokens: string[]):
       data: {
         accountId,
         claimedAt: new Date(),
+        // The edit token is kept: after claiming it can only propose changes the owner approves.
         claimTokenHash: null,
-        editTokenHash: null,
         claimExpiresAt: null,
         responsesEnabled: true,
       },

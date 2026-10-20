@@ -61,9 +61,21 @@ url = f"https://betterform.dev/new#z={z}"
 
 If the user reports an error on the page, it lists the exact field and problem. Fix it and send a new link.
 
+## Change a form the user already has
+
+Forms that belong to someone can't be changed directly. You send a complete revised version, and the owner sees a banner in the Better Form editor where they apply your changes or keep the current form. They can preview your version first.
+
+**With a link (no tools needed).** Take the form's share link, `https://betterform.dev/f/{id}`, and write `https://betterform.dev/edit/{id}#…` using the same format as `/new` links above. Give it to the user and tell them to open it while logged in to Better Form. Include every question the form should have, not just the new ones: anything you leave out is shown to the owner as removed. Questions with the same type and label as an existing one keep their collected answers.
+
+```
+https://betterform.dev/edit/{id}#title=Book+Club+Sign-up&q=short_text*:Your+name&q=email*:Email&q=multiple_choice:Which+meeting+works%3F&o=Tuesday&o=Thursday&o=Saturday
+```
+
+**With the edit token** from when you created the form: call `GET /api/agent/forms/{formId}` (or MCP `get_form`) to read the current version with each field's `id`, then `PATCH` the full revised definition (or MCP `update_form`). Keep each existing field's `id`. Once the form is claimed, the response is `202` with `"status": "pending_owner_approval"`. Tell the user to open the form in the editor to approve it. Sending another update replaces the pending one.
+
 ## MCP server
 
-If your client supports MCP connectors, add `https://betterform.dev/mcp` (Streamable HTTP, no auth). It provides `create_form`, `update_form` and `get_form`, which do the same things as the HTTP API below. Otherwise use the HTTP API.
+If your client supports MCP connectors, add `https://betterform.dev/mcp` (Streamable HTTP, no auth). It provides `create_form`, `update_form` and `get_form`, which do the same things as the HTTP API below. `update_form` on a claimed form sends the change to the owner for approval. Otherwise use the HTTP API.
 
 ## Create a form for a user
 
@@ -146,9 +158,9 @@ Adding a `signature` field automatically adds a required, verified email field i
 
 Payments, quizzes, response limits, deadlines and notification settings are not available through this API. Tell the user they can turn them on in the editor after claiming the form.
 
-## Revise a form before it's claimed
+## Revise a form
 
-Send the complete updated definition (same shape as create). It replaces the previous version. The `claimUrl` stays the same.
+Send the complete updated definition (same shape as create). Before the form is claimed, it replaces the previous version immediately (`200`) and the `claimUrl` stays the same. After it's claimed, it becomes a suggestion the owner approves in the editor (`202`, see "Change a form the user already has").
 
 ```
 PATCH https://betterform.dev/api/agent/forms/{formId}
@@ -156,10 +168,10 @@ Authorization: Bearer {editToken}
 Content-Type: application/json
 ```
 
-`GET` on the same URL with the same header returns the current definition. Once the user claims the form, the `editToken` stops working (`404`), and only the owner can change the form in the Better Form editor.
+`GET` on the same URL with the same header returns the current definition, including each field's `id`.
 
 ## Errors
 
 - `422 validation_failed`: `issues` lists each problem as `{ "path": "fields[2].options", "message": "…" }`. Fix those paths and retry.
 - `429 rate_limited`: too many forms created from this network in the last hour. Revise an existing form with its `editToken` instead.
-- `404 not_found` on PATCH or GET: wrong id or token, or the form was already claimed or expired.
+- `404 not_found` on PATCH or GET: wrong id or token, or the form expired before anyone claimed it.

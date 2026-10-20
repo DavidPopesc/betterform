@@ -44,7 +44,17 @@ export function AgentFormPreview({ form, message, actions }: { form: PreviewForm
   )
 }
 
-export function UnavailableFormLink({ title, message }: { title: string; message: string }) {
+export function UnavailableFormLink({
+  title,
+  message,
+  actionLabel = 'Go to your dashboard',
+  actionHref = '/dashboard',
+}: {
+  title: string
+  message: string
+  actionLabel?: string
+  actionHref?: string
+}) {
   return (
     <div className="flex min-h-svh items-center justify-center bg-muted p-6">
       <Card className="w-full max-w-md p-8 text-center">
@@ -52,7 +62,7 @@ export function UnavailableFormLink({ title, message }: { title: string; message
         <h1 className="mt-4 text-xl font-semibold text-slate-900">{title}</h1>
         <p className="mt-2 text-sm text-slate-600">{message}</p>
         <Button asChild className="mt-6">
-          <Link href="/dashboard">Go to your dashboard</Link>
+          <Link href={actionHref}>{actionLabel}</Link>
         </Button>
       </Card>
     </div>

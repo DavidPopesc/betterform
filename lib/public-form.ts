@@ -1,71 +1,51 @@
 import { headers } from 'next/headers'
 
 import { parseFormSchema } from '@/lib/form-schema'
+import { EXPIRED_LINK_MESSAGE, isLinkExpired, linkHiddenFieldIds, linkValues } from '@/lib/form-links'
+import type { FormLink } from '@/lib/generated/prisma'
 
-export async function getPublicFormPayload(identifier: string, prefillId?: string) {
+const PUBLIC_FORM_SELECT = {
+  id: true,
+  publicId: true,
+  name: true,
+  schema: true,
+  theme: true,
+  isQuiz: true,
+  showScore: true,
+  responsesEnabled: true,
+  responseDeadline: true,
+  successMessage: true,
+  allowAnotherResponse: true,
+  oneResponsePerUser: true,
+  requireLocationOnSubmit: true,
+  geoLockEnabled: true,
+  geoLockLatitude: true,
+  geoLockLongitude: true,
+  geoLockRadiusMeters: true,
+  paymentRequired: true,
+  paymentAmountCents: true,
+  paymentCurrency: true,
+} as const
+
+/**
+ * Loads a form for /f/{identifier}. The identifier is either the form's publicId or the id of
+ * one of its unique links (see lib/form-links.ts); `linkId` is used by the legacy /f/{publicId}/p/{linkId} route.
+ */
+export async function getPublicFormPayload(identifier: string, linkId?: string) {
   const { default: prisma } = await import('@/lib/db')
-  let form = await prisma.form.findUnique({
-    where: { publicId: identifier },
-    select: {
-      id: true,
-      publicId: true,
-      name: true,
-      schema: true,
-      theme: true,
-      isQuiz: true,
-      showScore: true,
-      responsesEnabled: true,
-      responseDeadline: true,
-      successMessage: true,
-      allowAnotherResponse: true,
-      oneResponsePerUser: true,
-      requireLocationOnSubmit: true,
-      geoLockEnabled: true,
-      geoLockLatitude: true,
-      geoLockLongitude: true,
-      geoLockRadiusMeters: true,
-      paymentRequired: true,
-      paymentAmountCents: true,
-      paymentCurrency: true,
-    },
-  })
 
-  let resolvedPrefillId = prefillId
+  let form = linkId ? null : await prisma.form.findUnique({ where: { publicId: identifier }, select: PUBLIC_FORM_SELECT })
+  let link: FormLink | null = null
 
-  if (!form && !prefillId) {
-    const candidateForms = await prisma.form.findMany({
-      select: {
-        id: true,
-        publicId: true,
-        name: true,
-        schema: true,
-        theme: true,
-        isQuiz: true,
-        showScore: true,
-        responsesEnabled: true,
-        responseDeadline: true,
-        successMessage: true,
-        allowAnotherResponse: true,
-        oneResponsePerUser: true,
-        requireLocationOnSubmit: true,
-        geoLockEnabled: true,
-        geoLockLatitude: true,
-        geoLockLongitude: true,
-        geoLockRadiusMeters: true,
-        paymentRequired: true,
-        paymentAmountCents: true,
-        paymentCurrency: true,
-      },
+  if (!form) {
+    const found = await prisma.formLink.findUnique({
+      where: { id: linkId ?? identifier },
+      include: { form: { select: PUBLIC_FORM_SELECT } },
     })
-
-    for (const candidate of candidateForms) {
-      const schema = parseFormSchema(candidate.schema)
-      const matchedPrefill = schema.prefills.find((prefill) => prefill.id === identifier)
-      if (matchedPrefill) {
-        form = candidate
-        resolvedPrefillId = matchedPrefill.id
-        break
-      }
+    if (found && (!linkId || found.form.publicId === identifier)) {
+      const { form: linkedForm, ...rest } = found
+      form = linkedForm
+      link = rest
     }
   }
 
@@ -74,9 +54,13 @@ export async function getPublicFormPayload(identifier: string, prefillId?: strin
   }
 
   const schema = parseFormSchema(form.schema)
-  const selectedPrefill = resolvedPrefillId ? schema.prefills.find((prefill) => prefill.id === resolvedPrefillId) : null
+  const linkExpired = link ? isLinkExpired(link) : false
+  const selectedPrefill = link
+    ? { id: link.id, name: link.label, values: linkValues(link), hiddenFieldIds: linkHiddenFieldIds(link) }
+    : null
 
-  const isClosed = !form.responsesEnabled || (form.responseDeadline ? new Date() > new Date(form.responseDeadline) : false)
+  const isClosed =
+    linkExpired || !form.responsesEnabled || (form.responseDeadline ? new Date() > new Date(form.responseDeadline) : false)
 
   let alreadySubmitted = false
   let closedReason = 'This form is not accepting responses.'
@@ -107,7 +91,9 @@ export async function getPublicFormPayload(identifier: string, prefillId?: strin
 
   const finalClosed = isClosed || alreadySubmitted
 
-  if (!form.responsesEnabled) {
+  if (linkExpired) {
+    closedReason = EXPIRED_LINK_MESSAGE
+  } else if (!form.responsesEnabled) {
     closedReason = 'This form is not accepting responses.'
   } else if (form.responseDeadline && new Date() > new Date(form.responseDeadline)) {
     closedReason = 'The response deadline has passed. This form is no longer accepting submissions.'

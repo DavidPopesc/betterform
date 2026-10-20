@@ -38,6 +38,7 @@ export async function GET(
         response: true,
         createdAt: true,
         submissionLocation: true,
+        formLinkLabel: true,
       },
     })
 
@@ -56,6 +57,7 @@ export async function GET(
     // Build CSV
     const headers = [
       'Timestamp',
+      'Link',
       ...fields.map((f) => f.label),
       'Location Latitude',
       'Location Longitude',
@@ -63,7 +65,7 @@ export async function GET(
       'Location Captured At',
     ]
     const rows = responses.map(r => {
-      const row = [new Date(r.createdAt).toISOString()]
+      const row = [new Date(r.createdAt).toISOString(), r.formLinkLabel ?? '']
       const responseData = (r.response || {}) as Record<string, unknown>
       const location = (typeof r.submissionLocation === 'object' && r.submissionLocation !== null
         ? r.submissionLocation as Record<string, unknown>

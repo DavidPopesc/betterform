@@ -25,8 +25,9 @@ const SERVER_INSTRUCTIONS =
   'Better Form builds hosted forms (sign-ups, RSVPs, applications, surveys, waivers, contracts) for clubs, events and projects. ' +
   'Call create_form with the complete form, then give the user the claimUrl from the result: it opens a preview where they add ' +
   'the form to their Better Form account (signing up if needed). The form accepts responses only after it is claimed. ' +
-  'Keep claimUrl private to the user. To change the form before it is claimed, call update_form with the full revised ' +
-  `definition. Unclaimed forms are deleted after ${CLAIM_TTL_DAYS} days.`
+  'Keep claimUrl private to the user. To change the form, call update_form with the full revised definition: before it ' +
+  'is claimed the change applies immediately; after it is claimed it is sent to the owner, who approves it in the editor. ' +
+  `Unclaimed forms are deleted after ${CLAIM_TTL_DAYS} days.`
 
 // ---------------------------------------------------------------------------
 // Tool definitions
@@ -116,8 +117,10 @@ const TOOLS = [
     name: 'update_form',
     title: 'Update form',
     description:
-      'Replace an unclaimed form with a revised definition (send every field, not just the changes). ' +
-      'The claimUrl stays the same. Fails once the user has claimed the form.',
+      'Replace a form with a revised definition (send every field, not just the changes). Unclaimed forms change ' +
+      'immediately and keep the same claimUrl. Once the user has claimed the form, the change is sent to them for ' +
+      'approval instead: they apply it or keep the current version from the editor. For claimed forms, call get_form ' +
+      'first and keep each field\'s id so existing responses stay attached.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -133,7 +136,7 @@ const TOOLS = [
   {
     name: 'get_form',
     title: 'Get form',
-    description: 'Fetch the current definition of an unclaimed form created with create_form.',
+    description: 'Fetch the current definition (with field ids) of a form created with create_form, claimed or not.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -194,7 +197,10 @@ async function callTool(name: unknown, args: Record<string, unknown>, clientIp: 
       // parseAgentFormInput ignores unknown keys, so formId/editToken can ride along in the definition.
       return toolResult(
         await updateAgentForm(stringArg(args, 'formId'), stringArg(args, 'editToken'), args),
-        (form) => `Updated "${form.name}". The user's claim link is unchanged.`
+        (form) =>
+          form.status === 'pending_owner_approval'
+            ? `Sent your changes to "${form.name}" to its owner for approval. Tell the user to open the form in the Better Form editor (${form.editorUrl}) to apply them or keep the current version.`
+            : `Updated "${form.name}". The user's claim link is unchanged.`
       )
     }
     case 'get_form':
