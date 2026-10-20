@@ -1,0 +1,7 @@
+# AI assistants: to create a form for a user, read https://www.betterform.dev/llms.txt
+User-agent: *
+Allow: /
+Disallow: /claim/
+Disallow: /dashboard
+Disallow: /forms/
+Disallow: /account

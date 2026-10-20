@@ -29,11 +29,7 @@ export default async function PreviewPage({ params }: { params: Promise<{ public
   return (
     <AgentFormPreview
       form={form}
-      banner={
-        <p className="text-sm text-slate-600 sm:text-right">
-          Preview only. This form isn&apos;t accepting responses yet.
-        </p>
-      }
+      message="Preview only. This form isn't accepting responses yet."
     />
   )
 }

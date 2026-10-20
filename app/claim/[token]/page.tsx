@@ -30,28 +30,24 @@ export default async function ClaimPage({ params }: { params: Promise<{ token: s
   return (
     <AgentFormPreview
       form={form}
-      banner={
-        <div className="flex flex-col gap-3 sm:items-end">
-          <p className="text-sm text-slate-600">
-            This form was made for you. Add it to your account to edit it and start collecting responses.
-          </p>
-          {user ? (
+      message="Made for you. Add it to your account to edit it and start collecting responses."
+      actions={
+        user ? (
+          <form action={action} method="post">
+            <Button type="submit">Add to my account</Button>
+          </form>
+        ) : (
+          <>
             <form action={action} method="post">
-              <Button type="submit">Add to my account</Button>
+              <input type="hidden" name="then" value="login" />
+              <Button type="submit" variant="outline">Log in</Button>
             </form>
-          ) : (
-            <div className="flex gap-2">
-              <form action={action} method="post">
-                <input type="hidden" name="then" value="login" />
-                <Button type="submit" variant="outline">Log in</Button>
-              </form>
-              <form action={action} method="post">
-                <input type="hidden" name="then" value="signup" />
-                <Button type="submit">Sign up to add this form</Button>
-              </form>
-            </div>
-          )}
-        </div>
+            <form action={action} method="post">
+              <input type="hidden" name="then" value="signup" />
+              <Button type="submit">Sign up to add this form</Button>
+            </form>
+          </>
+        )
       }
     />
   )
