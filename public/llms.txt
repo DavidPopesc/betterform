@@ -1,6 +1,51 @@
 # Better Form
 
-> Better Form (https://betterform.dev) is a form builder: sign-ups, RSVPs, applications, surveys, quizzes, waivers and signed contracts. AI agents can create a form for a user with one HTTP request. No account or API key is needed.
+> Better Form (https://betterform.dev) is a form builder: sign-ups, RSVPs, applications, surveys, quizzes, waivers and signed contracts. AI agents can create a form for a user with one HTTP request, or with just a link if they can't make requests. No account or API key is needed.
+
+Pick one way to create the form:
+- **You can only write text** (no web requests or code execution): write a form link. See "Form links" below.
+- **Your client supports MCP connectors**: use the MCP server.
+- **You can make HTTP requests**: use the HTTP API.
+
+## Form links (no tools needed)
+
+Write a link to `https://betterform.dev/new#…` that contains the whole form, and give it to the user. Opening it shows a preview with an "Add to my account" button. Nothing is saved until the user clicks that button. The part after `#` never reaches the server. `/new?…` also works, but prefer `#`.
+
+Readable format: `&`-separated `key=value` pairs. Use `+` for spaces and percent-encode `&`, `#`, `+` and `%` inside values. Don't put raw spaces in the link: chat apps cut links off at the first space.
+
+| Key | Meaning |
+|---|---|
+| `title=` | Form title, required. |
+| `theme=` | `slate`, `blue`, `green`, `purple` or `pink`. |
+| `success=` | Message shown after submitting. |
+| `q=type:Label` | Starts a new field. Add `*` after the type to make it required (`q=email*:Email`). The label may contain colons. Types are listed under "Form definition" below. |
+| `o=` | Adds one option to the field before it (`multiple_choice`, `dropdown`, `checkboxes`). Repeat it for each option. |
+| `d=` | Help text for the field before it, or the body of a `text` field. |
+| `content=` | Contract text for a `legal_text` field. |
+| `style=`, `max=` | `scale` fields: `numbers`, `stars` or `faces`, and 2–5. |
+| `files=`, `accept=` | `file_upload` fields: max files (1–10), and comma-separated types such as `image/*,.pdf`. |
+| `mode=` | `signature` fields: `draw`, `type` or `either`. |
+
+Example:
+
+```
+https://betterform.dev/new#title=Robotics+Club+Fall+Sign-up&success=See+you+Tuesday!&q=text:Welcome!&d=Meetings+are+Tuesdays+at+4pm+in+Room+204.&q=short_text*:Full+name&q=email*:Email&q=dropdown*:Grade&o=9&o=10&o=11&o=12&q=checkboxes:Which+teams+interest+you%3F&o=Build&o=Programming&o=Outreach&q=scale:Prior+experience&style=stars&max=5
+```
+
+Suggested reply: "Here's your form: [Open your form](…). Check the preview, then click **Add to my account** to edit it and get a link to share."
+
+If you can run code, you can send the same JSON definition the HTTP API takes in a shorter link instead:
+- `#j=` + base64url(JSON)
+- `#z=` + base64url(raw DEFLATE(JSON)), the shortest
+
+```python
+import base64, json, zlib
+c = zlib.compressobj(9, zlib.DEFLATED, -15)
+z = base64.urlsafe_b64encode(c.compress(json.dumps(form).encode()) + c.flush()).decode().rstrip("=")
+url = f"https://betterform.dev/new#z={z}"
+```
+
+If the user reports an error on the page, it lists the exact field and problem. Fix it and send a new link.
 
 ## MCP server
 
