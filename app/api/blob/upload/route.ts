@@ -30,11 +30,16 @@ export async function POST(request: Request): Promise<NextResponse> {
           where: { publicId: payload.publicId },
           select: {
             schema: true,
+            accountId: true,
           },
         })
 
         if (!form) {
           throw new Error('Form not found')
+        }
+
+        if (!form.accountId) {
+          throw new Error('Form is not accepting responses')
         }
 
         const schema = parseFormSchema(form.schema)

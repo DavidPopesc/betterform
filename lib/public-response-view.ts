@@ -83,7 +83,7 @@ export async function getSharedResponseViewPayload(viewId: string) {
       formId: form.id,
       formName: form.name || 'Untitled form',
       notifyOnLimitedViewVisit: form.notifyOnLimitedViewVisit,
-      ownerEmail: form.account.email,
+      ownerEmail: form.account?.email ?? null,
       viewId: sharedView.id,
       viewName: sharedView.name,
     })

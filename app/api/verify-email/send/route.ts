@@ -31,11 +31,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const { default: prisma } = await import('@/lib/db')
+
+    // Agent-created forms awaiting a claim are preview-only; don't send mail on their behalf.
+    const targetForm = await prisma.form.findUnique({ where: { id: formId }, select: { accountId: true } })
+    if (!targetForm || !targetForm.accountId) {
+      return NextResponse.json({ error: 'This form is not accepting responses.' }, { status: 403 })
+    }
+
     // Get or create form account ID
     const formAccountId = await getOrCreateFormAccountId()
 
     // Check if this email is already verified for this account
-    const { default: prisma } = await import('@/lib/db')
     const account = await prisma.formAccountUUID.findUnique({
       where: { id: formAccountId },
       select: { verifiedEmails: true },

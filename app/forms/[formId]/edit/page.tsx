@@ -13,6 +13,7 @@ export default async function Page({ params }: { params: Promise<{ formId?: stri
 
   const { default: prisma } = await import('@/lib/db')
   const form = await prisma.form.findUnique({ where: { id: formId } })
+  if (!form || form.accountId !== user.id) return redirect('/dashboard')
 
   const schema = (form?.schema as { fields?: unknown[] } | null) ?? { fields: [] }
   const initialSchema = { fields: schema.fields as unknown[], name: form?.name ?? undefined }

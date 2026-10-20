@@ -72,6 +72,8 @@ interface PublicFormProps {
     paymentAmountCents: number | null
     paymentCurrency: string
   }
+  // Renders the form fully interactive but never submits (agent-created forms awaiting a claim).
+  previewMode?: boolean
 }
 
 type PaymentIntentInfo = {
@@ -161,6 +163,7 @@ export default function PublicForm({
     paymentAmountCents: null,
     paymentCurrency: 'usd',
   },
+  previewMode = false,
 }: PublicFormProps) {
   const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [responses, setResponses] = useState<Record<string, ResponseValue>>({})
@@ -504,6 +507,11 @@ export default function PublicForm({
     )
     if (missingRequired.length > 0) {
       setError('Please fill in all required fields')
+      return
+    }
+
+    if (previewMode) {
+      setError('This is a preview. Add the form to your account to start collecting responses.')
       return
     }
 
