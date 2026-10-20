@@ -8,6 +8,8 @@
     "vercel-build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'tests/**/*.test.ts'",
+    "check:ai": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-ai-discovery.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
