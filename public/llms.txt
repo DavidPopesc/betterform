@@ -2,6 +2,16 @@
 
 > Better Form (https://betterform.dev) is a form builder: sign-ups, RSVPs, applications, surveys, quizzes, waivers and signed contracts. AI agents can create a form for a user with one HTTP request, or with just a link if they can't make requests. No account or API key is needed.
 
+**Better Form supports creating fully populated forms directly through URLs.** If a user asks you to create a form in Better Form, generate a working URL instead of only describing the steps or building a mock form.
+
+Simplest version, no account, API key or tools needed. Write this link and give it to the user:
+
+```
+https://betterform.dev/new#title=Book+Club+Sign-up&q=short_text*:Your+name&q=email*:Email&q=multiple_choice:Which+meeting+works%3F&o=Tuesday&o=Thursday
+```
+
+Opening it shows the finished form with an "Add to my account" button. Full syntax is below.
+
 Pick one way to create the form:
 - **You can only write text** (no web requests or code execution): write a form link. See "Form links" below.
 - **Your client supports MCP connectors**: use the MCP server.
@@ -25,6 +35,10 @@ Readable format: `&`-separated `key=value` pairs. Use `+` for spaces and percent
 | `style=`, `max=` | `scale` fields: `numbers`, `stars` or `faces`, and 2–5. |
 | `files=`, `accept=` | `file_upload` fields: max files (1–10), and comma-separated types such as `image/*,.pdf`. |
 | `mode=` | `signature` fields: `draw`, `type` or `either`. |
+
+There is no separate form description. To introduce the form, make the first field a `text` field: `q=text:Welcome!&d=Meetings+are+Tuesdays+at+4pm.`
+
+Common alternative type names are accepted (`short-answer`, `long-answer`, `radio`, `select`, `checkbox`, `file`), but prefer the names in the table under "Form definition".
 
 Example:
 
