@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Editor from '@/components/form-editor/Editor'
 import { getSessionUser } from '@/lib/auth-server'
+import { proposalDefinition, summarizeProposal } from '@/lib/form-proposals'
 
 export default async function Page({ params }: { params: Promise<{ formId?: string }> }) {
   const user = await getSessionUser()
@@ -20,10 +21,30 @@ export default async function Page({ params }: { params: Promise<{ formId?: stri
   const publicId = form?.publicId ?? formId // fallback to formId if publicId not set yet
   const theme = form?.theme ?? 'slate'
 
+  // An AI-suggested version waiting for the owner shows as a banner above the editor.
+  const proposal = await prisma.formEditProposal.findFirst({
+    where: { formId, status: 'pending' },
+    orderBy: { createdAt: 'desc' },
+  })
+  const pendingProposal = proposal
+    ? {
+        id: proposal.id,
+        createdAt: proposal.createdAt.toISOString(),
+        summary: summarizeProposal(form, proposalDefinition(proposal.definition)),
+        formChangedSince: form.updatedAt > proposal.createdAt,
+      }
+    : null
+
   return (
     <div className="min-h-svh">
       {/* Editor is a client component that manages local state */}
-      <Editor formId={formId} publicId={publicId} initialSchema={initialSchema} initialTheme={theme} />
+      <Editor
+        formId={formId}
+        publicId={publicId}
+        initialSchema={initialSchema}
+        initialTheme={theme}
+        pendingProposal={pendingProposal}
+      />
     </div>
   )
 }

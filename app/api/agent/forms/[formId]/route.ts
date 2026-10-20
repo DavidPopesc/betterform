@@ -3,14 +3,14 @@ import { getAgentForm, getBearerToken, updateAgentForm } from '@/lib/agent-forms
 
 type Params = { params: Promise<{ formId: string }> }
 
-function toResponse(result: Awaited<ReturnType<typeof getAgentForm>>) {
+function toResponse(result: Awaited<ReturnType<typeof getAgentForm>> | Awaited<ReturnType<typeof updateAgentForm>>) {
   if (!result.ok) {
     return NextResponse.json(
       { error: result.error, message: result.message, issues: result.issues },
       { status: result.status }
     )
   }
-  return NextResponse.json(result.form)
+  return NextResponse.json(result.form, { status: 'status' in result ? result.status : 200 })
 }
 
 export async function GET(req: Request, { params }: Params) {

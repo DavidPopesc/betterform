@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import TopBar, { type Tab } from './TopBar'
+import ProposalBanner, { type PendingProposal } from './ProposalBanner'
 import ResponsesTab from './tabs/ResponsesTab'
 import SendTab from './tabs/SendTab'
 import SettingsTab from './tabs/SettingsTab'
@@ -131,6 +132,7 @@ interface EditorProps {
   publicId: string
   initialSchema: { fields?: unknown[]; name?: string; title?: string }
   initialTheme?: string
+  pendingProposal?: PendingProposal | null
 }
 
 const THEME_COLORS: Record<string, { bg: string; border: string; input: string; button: string; text: string }> = {
@@ -172,7 +174,7 @@ const THEME_COLORS: Record<string, { bg: string; border: string; input: string; 
 
 }
 
-export default function Editor({ formId, publicId, initialSchema, initialTheme = 'slate' }: EditorProps) {
+export default function Editor({ formId, publicId, initialSchema, initialTheme = 'slate', pendingProposal = null }: EditorProps) {
   const [theme, setTheme] = React.useState(initialTheme)
   const themeColors = THEME_COLORS[theme] || THEME_COLORS.slate
   const [activeTab, setActiveTab] = React.useState<Tab>('questions')
@@ -182,6 +184,9 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
   const [selected, setSelected] = React.useState<string | null>(fields[0]?.id ?? null)
   const [isSaving, setIsSaving] = React.useState(false)
   const [isDirty, setIsDirty] = React.useState(false)
+  // Set while an AI proposal is being applied, so neither autosave nor the unload save can write
+  // this tab's older copy of the form over the applied changes before the page reloads.
+  const suspendSavesRef = React.useRef(false)
   const [draggedIndex, setDraggedIndex] = React.useState<number | null>(null)
   const [dropTarget, setDropTarget] = React.useState<number | null>(null)
   const [showImportModal, setShowImportModal] = React.useState(false)
@@ -474,6 +479,7 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
   }
 
   async function saveForm() {
+    if (suspendSavesRef.current) return
     setIsSaving(true)
     try {
       const res = await fetch(`/api/forms/${formId}/save`, {
@@ -509,7 +515,7 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
   // Try to persist on unload using navigator.sendBeacon as a best-effort
   React.useEffect(() => {
     function handleBeforeUnload(e: BeforeUnloadEvent) {
-      if (!isDirty) return
+      if (!isDirty || suspendSavesRef.current) return
       
       // Show browser warning dialog
       e.preventDefault()
@@ -537,6 +543,19 @@ export default function Editor({ formId, publicId, initialSchema, initialTheme =
         isSaving={isSaving}
         isDirty={isDirty}
       />
+      {pendingProposal ? (
+        <ProposalBanner
+          formId={formId}
+          proposal={pendingProposal}
+          hasUnsavedEdits={isDirty}
+          onBeforeApply={() => {
+            suspendSavesRef.current = true
+          }}
+          onApplyFailed={() => {
+            suspendSavesRef.current = false
+          }}
+        />
+      ) : null}
       
       <div className={`min-h-svh ${themeColors.bg}`}>
       {activeTab === 'questions' && (

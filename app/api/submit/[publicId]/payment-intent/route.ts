@@ -5,6 +5,7 @@ import { isRemoteBlobUrl } from '@/lib/blob'
 import { parseSubmissionLocation } from '@/lib/location'
 import { getOrCreateFormAccountId, getClientIp, getDeviceMetrics, updateFormAccountTracking } from '@/lib/form-account'
 import { validateSubmissionPreconditions, type UploadedAttachmentInput } from '@/lib/submission'
+import { applyLinkToResponses, resolveSubmissionLink } from '@/lib/form-links'
 
 const PENDING_SUBMISSION_LIFETIME_MS = 1000 * 60 * 30 // 30 minutes
 
@@ -90,7 +91,7 @@ export async function POST(
     }
 
     const body = await req.json()
-    const responses = body.responses as Record<string, unknown>
+    let responses = body.responses as Record<string, unknown>
     const submissionLocation = parseSubmissionLocation(body.location)
     uploadedAttachmentsByField =
       typeof body.uploadedAttachments === 'object' && body.uploadedAttachments !== null
@@ -102,6 +103,12 @@ export async function POST(
     if (!responses || typeof responses !== 'object') {
       return NextResponse.json({ error: 'invalid_response_data' }, { status: 400 })
     }
+
+    const linkCheck = await resolveSubmissionLink(form.id, body.formLinkId)
+    if (!linkCheck.ok) {
+      return NextResponse.json({ error: linkCheck.error, message: linkCheck.message }, { status: linkCheck.status })
+    }
+    responses = applyLinkToResponses(responses, linkCheck.link)
 
     const uploadedBlobUrls = Object.values(uploadedAttachmentsByField)
       .flat()
@@ -183,6 +190,7 @@ export async function POST(
         respondentEmail,
         respondentIp: ip,
         formAccountId,
+        formLinkId: linkCheck.link?.id ?? null,
         expiresAt: new Date(Date.now() + PENDING_SUBMISSION_LIFETIME_MS),
       },
     })

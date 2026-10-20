@@ -68,8 +68,15 @@ export async function finalizePendingSubmission(paymentIntentId: string): Promis
     schemaFields,
   })
 
+  // The unique link was checked when the payment started; it may have been deleted since, but the
+  // respondent has paid, so record it if it still exists rather than rejecting the response.
+  const link = pending.formLinkId
+    ? await prisma.formLink.findUnique({ where: { id: pending.formLinkId }, select: { id: true, label: true } })
+    : null
+
   const extraFields = {
     ...contractFields,
+    ...(link ? { formLinkId: link.id, formLinkLabel: link.label } : {}),
     stripePaymentIntentId: paymentIntentId,
     amountPaidCents: paymentIntent.amount_received,
     paymentCurrency: paymentIntent.currency,

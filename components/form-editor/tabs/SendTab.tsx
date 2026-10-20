@@ -4,21 +4,14 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { CheckCheck, Code, Copy, Download, Link2, Mail, Share2, Trash2 } from "lucide-react";
+import { CheckCheck, Code, Copy, Download, Mail, Share2 } from "lucide-react";
+import UniqueLinksCard from "@/components/form-editor/UniqueLinksCard";
 
 type Field = {
   id: string;
   type: string;
   label: string;
   options?: Array<{ id: string; label: string }>;
-};
-
-type PrefillLink = {
-  id: string;
-  name: string;
-  values: Record<string, unknown>;
-  hiddenFieldIds: string[];
-  createdAt: string;
 };
 
 interface SendTabProps {
@@ -31,36 +24,12 @@ interface SendTabProps {
 export default function SendTab({ formId, publicId, formName, fields }: SendTabProps) {
   const [copied, setCopied] = React.useState(false);
   const [embedCopied, setEmbedCopied] = React.useState(false);
-  const [copiedPrefillId, setCopiedPrefillId] = React.useState<string | null>(null);
-  const [prefills, setPrefills] = React.useState<PrefillLink[]>([]);
-  const [prefillName, setPrefillName] = React.useState("");
-  const [prefillFieldId, setPrefillFieldId] = React.useState("");
-  const [prefillValue, setPrefillValue] = React.useState("");
-  const [hidePrefilledField, setHidePrefilledField] = React.useState(true);
-  const [isCreatingPrefill, setIsCreatingPrefill] = React.useState(false);
 
   const formUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/f/${publicId}`;
   const embedCode = `<iframe src="${formUrl}" width="100%" height="600" frameborder="0"></iframe>`;
   const qrImageUrl = `/api/qr?data=${encodeURIComponent(formUrl)}`;
   const safeFormName = (formName || "Untitled form").trim().replace(/[\\/:*?"<>|]+/g, "-");
   const qrFileName = `${safeFormName}-Better Form.png`;
-  const prefillableFields = fields.filter((field) => !["text", "section", "file_upload"].includes(field.type));
-  const selectedPrefillField = prefillableFields.find((field) => field.id === prefillFieldId);
-
-  const loadSharing = React.useCallback(async () => {
-    try {
-      const response = await fetch(`/api/forms/${formId}/sharing`);
-      if (!response.ok) return;
-      const data = await response.json();
-      setPrefills(data.prefills || []);
-    } catch (error) {
-      console.error("Failed to load sharing config:", error);
-    }
-  }, [formId]);
-
-  React.useEffect(() => {
-    void loadSharing();
-  }, [loadSharing]);
 
   const copyLink = () => {
     navigator.clipboard.writeText(formUrl);
@@ -113,221 +82,17 @@ export default function SendTab({ formId, publicId, formName, fields }: SendTabP
     }
   };
 
-  const createPrefill = async () => {
-    if (!prefillFieldId || !prefillValue.trim()) return;
-
-    setIsCreatingPrefill(true);
-    try {
-      const response = await fetch(`/api/forms/${formId}/sharing`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create_prefill",
-          name: prefillName || `Prefilled ${selectedPrefillField?.label || "link"}`,
-          values: {
-            [prefillFieldId]: prefillValue,
-          },
-          hiddenFieldIds: hidePrefilledField ? [prefillFieldId] : [],
-        }),
-      });
-      if (!response.ok) throw new Error("Failed to create prefill");
-
-      await loadSharing();
-      setPrefillName("");
-      setPrefillFieldId("");
-      setPrefillValue("");
-      setHidePrefilledField(true);
-    } catch (error) {
-      console.error("Failed to create prefill:", error);
-    } finally {
-      setIsCreatingPrefill(false);
-    }
-  };
-
-  const copyPrefillLink = async (prefillId: string) => {
-    await navigator.clipboard.writeText(`${window.location.origin}/f/${prefillId}`);
-    setCopiedPrefillId(prefillId);
-    window.setTimeout(() => {
-      setCopiedPrefillId((current) => (current === prefillId ? null : current));
-    }, 2000);
-  };
-
-  const getPrefillQrImageUrl = (prefillId: string) =>
-    `/api/qr?data=${encodeURIComponent(`${window.location.origin}/f/${prefillId}`)}`;
-
-  const downloadPrefillQR = async (prefillId: string, prefillName: string) => {
-    try {
-      const response = await fetch(getPrefillQrImageUrl(prefillId));
-      if (!response.ok) throw new Error("QR generation failed");
-
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = `${(prefillName || "Prefill").replace(/[\\/:*?"<>|]+/g, "-")}-Better Form.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-    } catch (error) {
-      console.error("Failed to download prefill QR code:", error);
-    }
-  };
-
-  const deletePrefill = async (prefillId: string) => {
-    const confirmed = window.confirm("Delete this pre-filled link?");
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch(`/api/forms/${formId}/sharing`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "delete_prefill",
-          prefillId,
-        }),
-      });
-      if (!response.ok) throw new Error("Failed to delete prefill");
-      await loadSharing();
-    } catch (error) {
-      console.error("Failed to delete prefill:", error);
-    }
-  };
-
   return (
     <div className="max-w-4xl w-full mx-auto px-4 py-8">
       <div className="space-y-6">
         <div>
           <h3 className="text-xl font-semibold mb-2">Send & Share</h3>
           <p className="text-sm text-muted-foreground">
-            Share your form, or generate pre-filled links for private workflows.
+            Share your form, or create unique links to track who responded.
           </p>
         </div>
 
-        <Card className="p-6">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-primary/10 rounded-lg">
-              <Link2 className="w-5 h-5 text-primary" />
-            </div>
-            <div className="flex-1 space-y-4">
-              <div>
-                <h4 className="font-semibold mb-2">Pre-filled Link</h4>
-                <p className="text-sm text-muted-foreground">
-                  Lock in a field value ahead of time and optionally hide that field from respondents.
-                </p>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <Input value={prefillName} onChange={(e) => setPrefillName(e.target.value)} placeholder="Link name" />
-                <select
-                  value={prefillFieldId}
-                  onChange={(e) => {
-                    setPrefillFieldId(e.target.value);
-                    setPrefillValue("");
-                  }}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">Choose a field</option>
-                  {prefillableFields.map((field) => (
-                    <option key={field.id} value={field.id}>
-                      {field.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {selectedPrefillField ? (
-                <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
-                  {selectedPrefillField.options && selectedPrefillField.options.length > 0 ? (
-                    <select
-                      value={prefillValue}
-                      onChange={(e) => setPrefillValue(e.target.value)}
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="">Choose a value</option>
-                      {selectedPrefillField.options.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <Input value={prefillValue} onChange={(e) => setPrefillValue(e.target.value)} placeholder="Prefilled value" />
-                  )}
-
-                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={hidePrefilledField}
-                      onChange={(e) => setHidePrefilledField(e.target.checked)}
-                    />
-                    Hide field
-                  </label>
-                </div>
-              ) : null}
-
-              <Button onClick={createPrefill} disabled={!prefillFieldId || !prefillValue.trim() || isCreatingPrefill}>
-                {isCreatingPrefill ? "Creating..." : "Create pre-filled link"}
-              </Button>
-
-              {prefills.length > 0 ? (
-                <div className="space-y-3 border-t pt-4">
-                  {prefills.map((prefill) => (
-                    <div
-                      key={prefill.id}
-                      className="flex flex-col gap-4 rounded-lg border border-slate-200 p-4"
-                    >
-                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <div className="font-medium">{prefill.name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {new Date(prefill.createdAt).toLocaleString()}
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant={copiedPrefillId === prefill.id ? "default" : "outline"} onClick={() => copyPrefillLink(prefill.id)}>
-                            {copiedPrefillId === prefill.id ? (
-                              <>
-                                <CheckCheck className="w-4 h-4 mr-2" />
-                                Copied
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-4 h-4 mr-2" />
-                                Copy link
-                              </>
-                            )}
-                          </Button>
-                          <Button variant="outline" onClick={() => deletePrefill(prefill.id)}>
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:flex-row md:items-center">
-                        <div className="bg-white p-3 rounded-lg border border-slate-200">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={getPrefillQrImageUrl(prefill.id)} alt={`${prefill.name} QR code`} className="w-28 h-28" />
-                        </div>
-                        <div className="space-y-2">
-                          <div className="text-sm font-medium">Prefilled QR code</div>
-                          <p className="text-sm text-muted-foreground">
-                            Scan to open this exact pre-filled link.
-                          </p>
-                          <Button variant="outline" onClick={() => downloadPrefillQR(prefill.id, prefill.name)}>
-                            <Download className="w-4 h-4 mr-2" />
-                            Download QR Code
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </Card>
+        <UniqueLinksCard formId={formId} fields={fields} />
 
         <Card className="p-6">
           <div className="flex items-start gap-4">

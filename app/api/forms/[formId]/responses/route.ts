@@ -40,6 +40,7 @@ export async function GET(
         signedAt: true,
         locked: true,
         contractSnapshot: true,
+        formLinkLabel: true,
       },
     })
 

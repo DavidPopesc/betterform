@@ -28,6 +28,7 @@ export default async function PublicFormPage({
       successMessage={payload.form.successMessage ?? 'Your response has been recorded.'}
       prefillValues={payload.prefill?.values}
       hiddenFieldIds={payload.prefill?.hiddenFieldIds}
+      formLinkId={payload.prefill?.id}
       locationSettings={payload.locationSettings}
       paymentSettings={payload.paymentSettings}
       allowAnotherResponse={payload.allowAnotherResponse}

@@ -19,6 +19,7 @@ type ResponseData = {
   signedAt?: string | null
   locked?: boolean
   contractSnapshot?: Array<{ id: string; type: string; label?: string }> | null
+  formLinkLabel?: string | null
 }
 
 type Field = {
@@ -440,6 +441,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
 
     const questionFields = fields.filter((field) => !NON_QUESTION_TYPES.includes(field.type))
     const hasLocationData = responses.some((response) => response.submissionLocation)
+    const hasLinkData = responses.some((response) => response.formLinkLabel)
 
     return (
       <div className="overflow-x-auto">
@@ -447,6 +449,9 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
           <thead>
             <tr className="border-b">
               <th className="bg-slate-50 p-3 text-left text-sm font-semibold">Timestamp</th>
+              {hasLinkData ? (
+                <th className="bg-slate-50 p-3 text-left text-sm font-semibold">Link</th>
+              ) : null}
               {hasLocationData ? (
                 <th className="bg-slate-50 p-3 text-left text-sm font-semibold">Location</th>
               ) : null}
@@ -461,6 +466,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
             {responses.map((response) => (
               <tr key={response.id} className="border-b hover:bg-slate-50">
                 <td className="p-3 text-sm">{new Date(response.createdAt).toLocaleString()}</td>
+                {hasLinkData ? <td className="p-3 text-sm">{response.formLinkLabel ?? ''}</td> : null}
                 {hasLocationData ? (
                   <td className="p-3 text-sm">
                     {formatLocationSummary(response.submissionLocation)}
@@ -505,6 +511,7 @@ export default function ResponsesTab({ formId, fields }: ResponsesTabProps) {
                 </h3>
                 <span className="text-sm text-muted-foreground">
                   {new Date(response.createdAt).toLocaleString()}
+                  {response.formLinkLabel ? ` · via ${response.formLinkLabel}` : ''}
                 </span>
               </div>
               <div className="flex gap-2">
