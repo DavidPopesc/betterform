@@ -348,6 +348,7 @@ export async function createAgentForm(body: unknown, clientIp: string) {
 
   return {
     ok: true as const,
+    claimToken,
     form: {
       ...serializeAgentForm(form),
       claimUrl: claimUrlFor(claimToken),
